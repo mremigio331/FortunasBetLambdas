@@ -1,0 +1,11 @@
+aws_lambda_powertools
+cryptography<42
+fastapi
+httpx
+mangum
+pydantic[email]
+requests
+uvicorn
+fpdf
+pytz
+reportlab
