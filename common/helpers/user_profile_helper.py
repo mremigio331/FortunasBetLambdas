@@ -32,7 +32,7 @@ class UserProfileHelper:
             user_id=user_id,
             email=email,
             name=name,
-            created_at=datetime.utcnow().isoformat(),  # always a string
+            created_at=int(datetime.utcnow().timestamp()),  # Epoch timestamp
         )
         item = profile.dict()
         item["PK"] = f"USER#{user_id}"
