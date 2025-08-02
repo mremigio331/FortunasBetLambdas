@@ -10,3 +10,4 @@ class UserProfileModel(BaseModel):
     email: EmailStr
     name: str
     created_at: str
+    public_profile: Optional[bool] = False

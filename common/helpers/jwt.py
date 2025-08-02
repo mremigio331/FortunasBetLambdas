@@ -9,8 +9,9 @@ import boto3
 import contextvars
 from starlette.requests import Request as StarletteRequest
 import contextvars
+from common.constants.services import API_SERVICE
 
-logger = Logger(service="workout-tracer-api")
+logger = Logger(service=API_SERVICE)
 
 
 def decode_jwt(token: str) -> dict:

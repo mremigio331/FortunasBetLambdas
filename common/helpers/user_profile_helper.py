@@ -86,13 +86,8 @@ class UserProfileHelper:
                         "user_id": user_id_value,
                         "email": item.get("email"),
                         "name": item.get("name"),
-                        "public_profile": item.get("public_profile"),
                         "created_at": item.get("created_at"),
-                        "beta_features": item.get("beta_features", []),
-                        "cached_map_location": item.get(
-                            "cached_map_location", (40.7831, -73.9712)
-                        ),
-                        "distance_unit": item.get("distance_unit", "Imperial"),
+                        "public_profile": item.get("public_profile", False),
                     }
                     return result
                 last_evaluated_key = response.get("LastEvaluatedKey")
@@ -111,12 +106,9 @@ class UserProfileHelper:
         name: str = None,
         email: str = None,
         public_profile: bool = None,
-        beta_features: bool = None,
-        cached_map_location: tuple = None,
-        distance_unit: str = None,
     ):
         """
-        Update only the provided fields (name, email, public_profile, beta_features, cached_map_location) of the user profile.
+        Update only the provided fields (name, email, public_profile) of the user profile.
         Only fields that are not None will be updated.
         """
         # Use locals() to build updated_changes dict
