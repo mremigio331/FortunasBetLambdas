@@ -19,7 +19,15 @@ router = APIRouter()
 class CreateRoomRequest(BaseModel):
     room_name: str = Field(..., description="The name of the room")
     leagues: List[str] = Field(..., description="List of leagues for this room")
-    public: bool = Field(True, description="Whether the room is public or private")
+    start_date: int = Field(
+        ..., description="Start date of the room/season as epoch timestamp"
+    )
+    end_date: int = Field(
+        ..., description="End date of the room/season as epoch timestamp"
+    )
+    public: bool = Field(
+        False, description="Whether the room is public or private (private by default)"
+    )
     description: Optional[str] = Field(
         None, description="Optional description of the room"
     )
@@ -52,6 +60,8 @@ def create_room(request: Request, room_data: CreateRoomRequest):
             owner_id=user_id,
             public=room_data.public,
             description=room_data.description,
+            start_date=room_data.start_date,
+            end_date=room_data.end_date,
         )
 
         # Convert to JSON-serializable format

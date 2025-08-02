@@ -37,7 +37,9 @@ class RoomHelper:
         room_name: str,
         leagues: List[str],
         owner_id: str,
-        public: bool = True,
+        start_date: int,
+        end_date: int,
+        public: bool = False,
         description: Optional[str] = None,
     ) -> dict:
         """
@@ -55,6 +57,8 @@ class RoomHelper:
             owner_id=owner_id,
             public=public,
             description=description,
+            start_date=start_date,
+            end_date=end_date,
         )
 
         # Create room item
@@ -117,8 +121,10 @@ class RoomHelper:
                     "leagues": item.get("leagues"),
                     "created_at": item.get("created_at"),
                     "owner_id": item.get("owner_id"),
-                    "public": item.get("public", True),
+                    "public": item.get("public", False),
                     "description": item.get("description"),
+                    "start_date": item.get("start_date"),
+                    "end_date": item.get("end_date"),
                 }
                 return result
             else:
