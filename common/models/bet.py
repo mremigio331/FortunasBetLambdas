@@ -10,5 +10,5 @@ class BetModel(BaseModel):
 
     bet: dict
     locked: bool
-    submitted_at: datetime
+    submitted_at: int  # Epoch timestamp
     ods: dict

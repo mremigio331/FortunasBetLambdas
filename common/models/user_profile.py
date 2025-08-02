@@ -9,5 +9,5 @@ class UserProfileModel(BaseModel):
     user_id: str
     email: EmailStr
     name: str
-    created_at: str
+    created_at: int  # Epoch timestamp
     public_profile: Optional[bool] = False
