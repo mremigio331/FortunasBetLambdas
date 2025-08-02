@@ -1,0 +1,6 @@
+layer/
+__pycache__/
+*.cpython-*
+*.zip
+.DS
+*.pyc
