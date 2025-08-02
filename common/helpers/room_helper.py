@@ -12,7 +12,7 @@ from exceptions.room_exceptions import (
     MembershipNotFoundException,
 )
 import os
-import uuid
+import random
 from typing import List, Optional
 
 
@@ -48,7 +48,8 @@ class RoomHelper:
         The owner is automatically added as the only admin.
         Returns the created room data.
         """
-        room_uuid = str(uuid.uuid4())
+        # Generate a random 10-digit room ID
+        room_id = str(random.randint(1000000000, 9999999999))
         current_time = int(datetime.utcnow().timestamp())
 
         # Create room model - owner is automatically the admin
@@ -66,7 +67,7 @@ class RoomHelper:
 
         # Create room item
         room_item = room.dict()
-        room_item["PK"] = f"ROOM#{room_uuid}"
+        room_item["PK"] = f"ROOM#{room_id}"
         room_item["SK"] = self.room_sk
 
         try:
@@ -75,7 +76,7 @@ class RoomHelper:
 
             # Create membership for the owner using MembershipHelper
             self.membership_helper.create_membership(
-                room_id=room_uuid,
+                room_id=room_id,
                 requestor_id=owner_id,
                 room_name=room_name,
                 membership_type=MembershipType.REQUEST,
@@ -84,11 +85,11 @@ class RoomHelper:
                 join_date=current_time,
             )
 
-            self.logger.info(f"Created room {room_uuid} with owner {owner_id}")
+            self.logger.info(f"Created room {room_id} with owner {owner_id}")
 
             # Create audit record for room
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_uuid}",
+                pk=f"ROOM#{room_id}",
                 entity_type="Room",
                 action=AuditActions.CREATE.value,
                 user_id=owner_id,
@@ -99,7 +100,7 @@ class RoomHelper:
 
             # Return room data with room_id
             result = room.dict()
-            result["room_id"] = room_uuid
+            result["room_id"] = room_id
             return result
 
         except ClientError as e:
@@ -146,6 +147,7 @@ class RoomHelper:
         room_name: Optional[str] = None,
         leagues: Optional[List[str]] = None,
         admins: Optional[List[str]] = None,
+        public: Optional[bool] = None,
         start_date: Optional[int] = None,
         end_date: Optional[int] = None,
     ) -> dict:
@@ -187,6 +189,11 @@ class RoomHelper:
                 update_expr_parts.append("admins = :admins")
                 expr_attr_values[":admins"] = admins
 
+            if public is not None:
+                update_expr_parts.append("#public = :public")
+                expr_attr_names["#public"] = "public"  # 'public' is a reserved word
+                expr_attr_values[":public"] = public
+
             if start_date is not None:
                 update_expr_parts.append("start_date = :start_date")
                 expr_attr_values[":start_date"] = start_date
@@ -224,6 +231,7 @@ class RoomHelper:
             response = self.table.update_item(
                 Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk},
                 UpdateExpression=update_expr,
+                ExpressionAttributeNames=expr_attr_names if expr_attr_names else None,
                 ExpressionAttributeValues=expr_attr_values,
                 ReturnValues="ALL_NEW",
             )
@@ -248,6 +256,58 @@ class RoomHelper:
 
         except ClientError as e:
             self.logger.error(f"Error updating room {room_id}: {e}")
+            raise
+
+    def get_all_rooms(self) -> List[dict]:
+        """
+        Get all rooms with basic information (room_id, room_name, description).
+        Returns a list of room summaries.
+        """
+        try:
+            rooms = []
+            last_evaluated_key = None
+
+            while True:
+                # Scan with filter - more efficient than the previous GSI approach
+                scan_kwargs = {
+                    "FilterExpression": "begins_with(PK, :pk_prefix) AND SK = :sk",
+                    "ExpressionAttributeValues": {
+                        ":pk_prefix": "ROOM#",
+                        ":sk": self.room_sk,
+                    },
+                    "ProjectionExpression": "PK, room_name, description",
+                }
+
+                # Add pagination key if available
+                if last_evaluated_key:
+                    scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                response = self.table.scan(**scan_kwargs)
+
+                # Process items
+                for item in response.get("Items", []):
+                    # Extract room_id from PK
+                    pk_value = item.get("PK", "")
+                    if pk_value.startswith("ROOM#"):
+                        room_id = pk_value.replace("ROOM#", "")
+                        rooms.append(
+                            {
+                                "room_id": room_id,
+                                "room_name": item.get("room_name"),
+                                "description": item.get("description"),
+                            }
+                        )
+
+                # Check for more pages
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
+
+            self.logger.info(f"Retrieved {len(rooms)} rooms")
+            return rooms
+
+        except ClientError as e:
+            self.logger.error(f"Error retrieving all rooms: {e}")
             raise
 
     def get_user_rooms(self, user_id: str) -> List[dict]:

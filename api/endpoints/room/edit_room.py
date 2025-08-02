@@ -25,6 +25,9 @@ class EditRoomRequest(BaseModel):
     admins: Optional[List[str]] = Field(
         None, description="List of admin user IDs for this room"
     )
+    public: Optional[bool] = Field(
+        None, description="Whether the room is public or private"
+    )
     start_date: Optional[int] = Field(
         None, description="Start date of the room/season as epoch timestamp"
     )
@@ -38,7 +41,7 @@ class EditRoomRequest(BaseModel):
 def edit_room(request: Request, room_data: EditRoomRequest):
     """
     Edit an existing room. Only room admins can edit rooms.
-    Only the specified fields (room_name, leagues, admins, start_date, end_date) can be updated.
+    Only the specified fields (room_name, leagues, admins, public, start_date, end_date) can be updated.
     """
     logger.append_keys(request_id=request.state.request_id)
     logger.info(
@@ -78,6 +81,7 @@ def edit_room(request: Request, room_data: EditRoomRequest):
             room_name=room_data.room_name,
             leagues=room_data.leagues,
             admins=room_data.admins,
+            public=room_data.public,
             start_date=room_data.start_date,
             end_date=room_data.end_date,
         )
