@@ -61,20 +61,48 @@ class MembershipHelper:
             created_at=current_time,
         )
 
-        # Create membership item
-        membership_item = membership.dict()
+        # Create membership item - use by_alias and exclude_unset to get clean dict
+        membership_item = membership.dict(by_alias=True, exclude_unset=True)
         membership_item["PK"] = f"ROOM#{room_id}"
-        target_user = invited_user_id if membership_type == MembershipType.INVITATION else requestor_id
+        # Handle both enum and string values for comparison
+        is_invitation = (
+            membership_type == MembershipType.INVITATION
+            or (
+                hasattr(membership_type, "value")
+                and membership_type.value == MembershipType.INVITATION.value
+            )
+            or membership_type == MembershipType.INVITATION.value
+        )
+        target_user = invited_user_id if is_invitation else requestor_id
         membership_item["SK"] = f"{self.membership_sk_prefix}{target_user}"
+
+        # Convert enum values to strings for DynamoDB (handle both enum and string inputs)
+        membership_item["membership_type"] = (
+            membership_type.value
+            if hasattr(membership_type, "value")
+            else membership_type
+        )
+        membership_item["status"] = status.value if hasattr(status, "value") else status
 
         try:
             self.table.put_item(Item=membership_item)
 
             self.logger.info(
-                f"Created {membership_type.value} membership for user {target_user} in room {room_id}"
+                f"Created {membership_type.value if hasattr(membership_type, 'value') else membership_type} membership for user {target_user} in room {room_id}"
             )
 
             # Create audit record
+            # Create a clean membership dict for audit without enum objects
+            audit_membership = membership.dict(by_alias=True, exclude_unset=True)
+            audit_membership["membership_type"] = (
+                membership_type.value
+                if hasattr(membership_type, "value")
+                else membership_type
+            )
+            audit_membership["status"] = (
+                status.value if hasattr(status, "value") else status
+            )
+
             self.audit_action_helper.create_audit_record(
                 pk=f"ROOM#{room_id}",
                 entity_type="Membership",
@@ -82,10 +110,17 @@ class MembershipHelper:
                 user_id=requestor_id,
                 sk=self.membership_audit_sk,
                 before=None,
-                after=membership,
+                after=audit_membership,  # Use dict instead of model
             )
 
             result = membership.dict()
+            # Ensure enums are converted to strings in the result
+            result["membership_type"] = (
+                membership_type.value
+                if hasattr(membership_type, "value")
+                else membership_type
+            )
+            result["status"] = status.value if hasattr(status, "value") else status
             result["room_id"] = room_id
             return result
 
@@ -110,7 +145,10 @@ class MembershipHelper:
             raise
 
     def get_user_memberships_by_status(
-        self, user_id: str, status: MembershipStatus, membership_type: MembershipType = None
+        self,
+        user_id: str,
+        status: MembershipStatus,
+        membership_type: MembershipType = None,
     ) -> List[dict]:
         """
         Get all memberships for a user filtered by status and optionally by membership type.
@@ -140,8 +178,12 @@ class MembershipHelper:
             )
 
             memberships = response.get("Items", [])
-            status_desc = f"{status.value}" + (f" {membership_type.value}" if membership_type else "")
-            self.logger.info(f"Found {len(memberships)} {status_desc} memberships for user {user_id}")
+            status_desc = f"{status.value}" + (
+                f" {membership_type.value}" if membership_type else ""
+            )
+            self.logger.info(
+                f"Found {len(memberships)} {status_desc} memberships for user {user_id}"
+            )
             return memberships
 
         except ClientError as e:
@@ -202,7 +244,9 @@ class MembershipHelper:
             self.logger.error(f"Error creating invitation: {e}")
             raise
 
-    def request_to_join_room(self, room_id: str, room_name: str, owner_id: str, user_id: str) -> dict:
+    def request_to_join_room(
+        self, room_id: str, room_name: str, owner_id: str, user_id: str
+    ) -> dict:
         """
         User requests to join a room.
         Creates a pending request that the owner can approve or deny.
@@ -301,8 +345,17 @@ class MembershipHelper:
             )
 
             # Create audit record
-            before_membership = MembershipModel(**membership)
-            after_membership = MembershipModel(**response["Attributes"])
+            # Convert models to clean dicts without enum objects for audit
+            before_dict = dict(membership)
+            if "membership_type" in before_dict and hasattr(
+                before_dict["membership_type"], "value"
+            ):
+                before_dict["membership_type"] = before_dict["membership_type"].value
+            if "status" in before_dict and hasattr(before_dict["status"], "value"):
+                before_dict["status"] = before_dict["status"].value
+
+            after_dict = dict(response["Attributes"])
+            # response["Attributes"] should already have string values from DynamoDB
 
             self.audit_action_helper.create_audit_record(
                 pk=f"ROOM#{room_id}",
@@ -310,8 +363,8 @@ class MembershipHelper:
                 action=AuditActions.UPDATE.value,
                 user_id=responding_user_id,
                 sk=self.membership_audit_sk,
-                before=before_membership,
-                after=after_membership,
+                before=before_dict,
+                after=after_dict,
             )
 
             result = response["Attributes"]

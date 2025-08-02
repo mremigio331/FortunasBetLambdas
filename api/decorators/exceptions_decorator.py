@@ -10,6 +10,12 @@ from exceptions.jwt_exeptions import (
     MissingJWTException,
     JWTSignatureException,
 )
+from exceptions.room_exceptions import (
+    InvalidLeagueException,
+    EmptyLeagueListException,
+    RoomNotFoundException,
+    UnauthorizedRoomAccessException,
+)
 from fastapi.responses import JSONResponse
 from botocore.exceptions import ClientError
 
@@ -25,9 +31,17 @@ def exceptions_decorator(func):
             return JSONResponse(
                 content={"message": str(exc) or "User not found."}, status_code=404
             )
+        except RoomNotFoundException as exc:
+            return JSONResponse(
+                content={"message": str(exc) or "Room not found."}, status_code=404
+            )
         except InvalidUserIdException as exc:
             return JSONResponse(
                 content={"message": str(exc) or "Invalid user ID."}, status_code=400
+            )
+        except (InvalidLeagueException, EmptyLeagueListException) as exc:
+            return JSONResponse(
+                content={"message": str(exc) or "Invalid league data."}, status_code=400
             )
         except (InvalidJWTException, JWTSignatureException) as exc:
             return JSONResponse(
@@ -41,12 +55,11 @@ def exceptions_decorator(func):
             return JSONResponse(
                 content={"message": str(exc) or "JWT missing."}, status_code=401
             )
-        except ProfileNotPublicOrDoesNotExist as e:
+        except (ProfileNotPublicOrDoesNotExist, UnauthorizedRoomAccessException) as exc:
             return JSONResponse(
                 status_code=403,
                 content={
-                    "message": str(e)
-                    or "Access denied: profile is not public or does not exist."
+                    "message": str(exc) or "Access denied: insufficient permissions."
                 },
             )
 

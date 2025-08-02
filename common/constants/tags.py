@@ -1,2 +1,5 @@
 HOME = "Home"
 USER_PROFILE = "User Profile"
+ROOM = "Room"
+MEMBERSHIP = "Membership"
+BET = "Bet"

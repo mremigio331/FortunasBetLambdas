@@ -2,7 +2,7 @@ from aws_lambda_powertools import Logger
 import boto3
 from botocore.exceptions import ClientError
 from common.models.room import RoomModel
-from common.models.membership import MembershipModel, MembershipType, MembershipStatus
+from common.models.membership import MembershipType, MembershipStatus
 from datetime import datetime
 from common.helpers.audit_actions_helper import AuditActions, AuditActionHelper
 from common.helpers.membership_helper import MembershipHelper
@@ -62,34 +62,18 @@ class RoomHelper:
         room_item["PK"] = f"ROOM#{room_uuid}"
         room_item["SK"] = self.room_sk
 
-        # Create membership model for the owner
-        membership = MembershipModel(
-            owner=owner_id,
-            requestor=owner_id,  # Owner is also the requestor when creating
-            room_name=room_name,
-            membership_type=MembershipType.REQUEST,  # Owner "requests" to create
-            status=MembershipStatus.APPROVED,  # Owner is automatically approved
-            join_date=current_time,
-            created_at=current_time,
-        )
-
-        # Create membership item
-        membership_item = membership.dict()
-        membership_item["PK"] = f"ROOM#{room_uuid}"
-        membership_item["SK"] = f"{self.membership_sk_prefix}{owner_id}"
-
         try:
             # Create room and membership
             self.table.put_item(Item=room_item)
-            
+
             # Create membership for the owner using MembershipHelper
             self.membership_helper.create_membership(
                 room_id=room_uuid,
                 owner_id=owner_id,
                 requestor_id=owner_id,
                 room_name=room_name,
-                membership_type=MembershipType.REQUEST,
-                status=MembershipStatus.APPROVED,
+                membership_type=MembershipType.REQUEST.value,
+                status=MembershipStatus.APPROVED.value,
                 join_date=current_time,
             )
 
@@ -157,9 +141,16 @@ class RoomHelper:
         Get all rooms where the user has pending join requests.
         Returns a list of room details with request information.
         """
-        return self._get_user_rooms_by_status(user_id, MembershipStatus.PENDING, MembershipType.REQUEST)
+        return self._get_user_rooms_by_status(
+            user_id, MembershipStatus.PENDING.value, MembershipType.REQUEST.value
+        )
 
-    def _get_user_rooms_by_status(self, user_id: str, status: MembershipStatus, membership_type: MembershipType = None) -> List[dict]:
+    def _get_user_rooms_by_status(
+        self,
+        user_id: str,
+        status: MembershipStatus,
+        membership_type: MembershipType = None,
+    ) -> List[dict]:
         """
         Get rooms for a user filtered by membership status and optionally by membership type.
         Returns a list of room details with membership information.
@@ -180,16 +171,22 @@ class RoomHelper:
                     if room_details:
                         # Add membership info to room details
                         room_details["join_date"] = membership.get("join_date")
-                        room_details["is_owner"] = (
-                            membership.get("owner") == user_id
-                        )
+                        room_details["is_owner"] = membership.get("owner") == user_id
                         room_details["membership_status"] = membership.get("status")
-                        room_details["membership_type"] = membership.get("membership_type")
-                        room_details["created_at_membership"] = membership.get("created_at")
+                        room_details["membership_type"] = membership.get(
+                            "membership_type"
+                        )
+                        room_details["created_at_membership"] = membership.get(
+                            "created_at"
+                        )
                         user_rooms.append(room_details)
 
-            status_desc = f"{status.value}" + (f" {membership_type.value}" if membership_type else "")
-            self.logger.info(f"Found {len(user_rooms)} {status_desc} rooms for user {user_id}")
+            status_desc = f"{status.value}" + (
+                f" {membership_type.value}" if membership_type else ""
+            )
+            self.logger.info(
+                f"Found {len(user_rooms)} {status_desc} rooms for user {user_id}"
+            )
             return user_rooms
 
         except ClientError as e:
@@ -217,13 +214,11 @@ class RoomHelper:
 
             # Delete the room and all its memberships
             self.table.delete_item(Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk})
-            
+
             # Use MembershipHelper to delete all memberships
             deleted_count = self.membership_helper.delete_all_room_memberships(room_id)
 
-            self.logger.info(
-                f"Deleted room {room_id} and {deleted_count} memberships"
-            )
+            self.logger.info(f"Deleted room {room_id} and {deleted_count} memberships")
 
             # Create audit record for room deletion
             room_model = RoomModel(**room)
@@ -244,7 +239,9 @@ class RoomHelper:
             raise
 
     # Membership delegation methods - delegate to MembershipHelper
-    def invite_user_to_room(self, room_id: str, owner_id: str, invited_user_id: str) -> dict:
+    def invite_user_to_room(
+        self, room_id: str, owner_id: str, invited_user_id: str
+    ) -> dict:
         """
         Owner invites a user to join a room.
         Delegates to MembershipHelper after validating room ownership.
@@ -318,7 +315,9 @@ class RoomHelper:
                     user_id=owner_id, room_id=room_id, action="view requests for"
                 )
 
-            return self.membership_helper.get_pending_requests_for_room(room_id, owner_id)
+            return self.membership_helper.get_pending_requests_for_room(
+                room_id, owner_id
+            )
 
         except ClientError as e:
             self.logger.error(f"Error getting pending requests: {e}")

@@ -86,7 +86,7 @@ class UserProfileHelper:
                         "user_id": user_id_value,
                         "email": item.get("email"),
                         "name": item.get("name"),
-                        "created_at": item.get("created_at"),
+                        "created_at": int(item.get("created_at")),
                         "public_profile": item.get("public_profile", False),
                     }
                     return result
