@@ -15,6 +15,8 @@ from exceptions.room_exceptions import (
     EmptyLeagueListException,
     RoomNotFoundException,
     UnauthorizedRoomAccessException,
+    InvalidDateRangeException,
+    EmptyAdminsListException,
 )
 from fastapi.responses import JSONResponse
 from botocore.exceptions import ClientError
@@ -39,9 +41,14 @@ def exceptions_decorator(func):
             return JSONResponse(
                 content={"message": str(exc) or "Invalid user ID."}, status_code=400
             )
-        except (InvalidLeagueException, EmptyLeagueListException) as exc:
+        except (
+            InvalidLeagueException,
+            EmptyLeagueListException,
+            InvalidDateRangeException,
+            EmptyAdminsListException,
+        ) as exc:
             return JSONResponse(
-                content={"message": str(exc) or "Invalid league data."}, status_code=400
+                content={"message": str(exc) or "Invalid room data."}, status_code=400
             )
         except (InvalidJWTException, JWTSignatureException) as exc:
             return JSONResponse(

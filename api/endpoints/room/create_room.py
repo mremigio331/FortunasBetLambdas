@@ -33,7 +33,7 @@ class CreateRoomRequest(BaseModel):
     )
 
 
-@router.post("/", response_model=dict)
+@router.post("/create_room", response_model=dict)
 @exceptions_decorator
 def create_room(request: Request, room_data: CreateRoomRequest):
     """

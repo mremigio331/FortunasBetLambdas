@@ -35,11 +35,11 @@ class MembershipHelper:
     def create_membership(
         self,
         room_id: str,
-        owner_id: str,
         requestor_id: str,
         room_name: str,
         membership_type: MembershipType,
         status: MembershipStatus = MembershipStatus.PENDING,
+        admin_id: Optional[str] = None,
         invited_user_id: Optional[str] = None,
         join_date: Optional[int] = None,
     ) -> dict:
@@ -51,7 +51,7 @@ class MembershipHelper:
 
         # Create membership model
         membership = MembershipModel(
-            owner=owner_id,
+            admin_id=admin_id,
             requestor=requestor_id,
             invited_user=invited_user_id,
             room_name=room_name,
@@ -155,14 +155,13 @@ class MembershipHelper:
         """
         try:
             # Build filter expression based on parameters
-            filter_expr = "begins_with(SK, :sk_prefix) AND ((:user_id = #owner OR :user_id = requestor OR :user_id = invited_user) AND #status = :status)"
+            filter_expr = "begins_with(SK, :sk_prefix) AND ((:user_id = admin_id OR :user_id = requestor OR :user_id = invited_user) AND #status = :status)"
             expr_attr_values = {
                 ":sk_prefix": self.membership_sk_prefix,
                 ":user_id": user_id,
                 ":status": status.value,
             }
             expr_attr_names = {
-                "#owner": "owner",  # 'owner' might be a reserved word
                 "#status": "status",  # 'status' might be a reserved word
             }
 
@@ -215,10 +214,10 @@ class MembershipHelper:
             raise
 
     def invite_user_to_room(
-        self, room_id: str, room_name: str, owner_id: str, invited_user_id: str
+        self, room_id: str, room_name: str, admin_id: str, invited_user_id: str
     ) -> dict:
         """
-        Owner invites a user to join a room.
+        Admin invites a user to join a room.
         Creates a pending invitation that the user can accept or decline.
         """
         try:
@@ -232,11 +231,11 @@ class MembershipHelper:
             # Create invitation
             return self.create_membership(
                 room_id=room_id,
-                owner_id=owner_id,
-                requestor_id=owner_id,  # Owner is the requestor for invitations
+                requestor_id=admin_id,  # Admin is the requestor for invitations
                 room_name=room_name,
                 membership_type=MembershipType.INVITATION,
                 status=MembershipStatus.PENDING,
+                admin_id=admin_id,
                 invited_user_id=invited_user_id,
             )
 
@@ -244,12 +243,10 @@ class MembershipHelper:
             self.logger.error(f"Error creating invitation: {e}")
             raise
 
-    def request_to_join_room(
-        self, room_id: str, room_name: str, owner_id: str, user_id: str
-    ) -> dict:
+    def request_to_join_room(self, room_id: str, room_name: str, user_id: str) -> dict:
         """
         User requests to join a room.
-        Creates a pending request that the owner can approve or deny.
+        Creates a pending request that room admins can approve or deny.
         """
         try:
             # Check if membership already exists
@@ -257,14 +254,14 @@ class MembershipHelper:
             if existing_membership:
                 raise MembershipAlreadyExistsException(user_id=user_id, room_id=room_id)
 
-            # Create request
+            # Create request - no admin_id set since it's a user request
             return self.create_membership(
                 room_id=room_id,
-                owner_id=owner_id,
                 requestor_id=user_id,
                 room_name=room_name,
                 membership_type=MembershipType.REQUEST,
                 status=MembershipStatus.PENDING,
+                admin_id=None,  # No specific admin assigned
             )
 
         except ClientError as e:
@@ -276,8 +273,9 @@ class MembershipHelper:
     ) -> dict:
         """
         Respond to a membership request or invitation.
-        - For requests: Owner approves/denies user's request
-        - For invitations: User accepts/declines owner's invitation
+        - For requests: Any room admin can approve/deny user's request
+        - For invitations: User accepts/declines admin's invitation
+        Note: Room admin validation should be done by the calling code (RoomHelper)
         """
         try:
             # Get the membership
@@ -297,13 +295,9 @@ class MembershipHelper:
             # Validate permissions
             membership_type = membership.get("membership_type")
             if membership_type == MembershipType.REQUEST.value:
-                # Only owner can respond to requests
-                if membership.get("owner") != responding_user_id:
-                    raise UnauthorizedRoomAccessException(
-                        user_id=responding_user_id,
-                        room_id=room_id,
-                        action="respond to requests for",
-                    )
+                # For requests: Admin validation should be done by calling code
+                # We can't validate admin status here without room details
+                pass
             elif membership_type == MembershipType.INVITATION.value:
                 # Only invited user can respond to invitations
                 invited_user = membership.get("invited_user")
@@ -383,13 +377,12 @@ class MembershipHelper:
             user_id, MembershipStatus.PENDING, MembershipType.INVITATION
         )
 
-    def get_pending_requests_for_room(self, room_id: str, owner_id: str) -> List[dict]:
+    def get_pending_requests_for_room(self, room_id: str) -> List[dict]:
         """
-        Get all pending requests for a room (owner only).
+        Get all pending requests for a room.
+        Note: Admin authorization should be validated by the calling code (RoomHelper)
         """
         try:
-            # Note: We can't verify ownership here since we don't have access to RoomHelper
-            # This validation should be done in the calling code or we need to pass room details
             return self.get_room_memberships_by_status_and_type(
                 room_id, MembershipStatus.PENDING, MembershipType.REQUEST
             )

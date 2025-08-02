@@ -9,6 +9,7 @@ from common.helpers.membership_helper import MembershipHelper
 from exceptions.room_exceptions import (
     RoomNotFoundException,
     UnauthorizedRoomAccessException,
+    MembershipNotFoundException,
 )
 import os
 import uuid
@@ -44,12 +45,13 @@ class RoomHelper:
     ) -> dict:
         """
         Create a new room in DynamoDB and create a membership for the owner.
+        The owner is automatically added as the only admin.
         Returns the created room data.
         """
         room_uuid = str(uuid.uuid4())
         current_time = int(datetime.utcnow().timestamp())
 
-        # Create room model
+        # Create room model - owner is automatically the admin
         room = RoomModel(
             room_name=room_name,
             leagues=leagues,
@@ -57,6 +59,7 @@ class RoomHelper:
             owner_id=owner_id,
             public=public,
             description=description,
+            admins=[owner_id],  # Owner is automatically the only admin
             start_date=start_date,
             end_date=end_date,
         )
@@ -73,11 +76,11 @@ class RoomHelper:
             # Create membership for the owner using MembershipHelper
             self.membership_helper.create_membership(
                 room_id=room_uuid,
-                owner_id=owner_id,
                 requestor_id=owner_id,
                 room_name=room_name,
-                membership_type=MembershipType.REQUEST.value,
-                status=MembershipStatus.APPROVED.value,
+                membership_type=MembershipType.REQUEST,
+                status=MembershipStatus.APPROVED,
+                admin_id=owner_id,  # Owner is the admin who approves their own membership
                 join_date=current_time,
             )
 
@@ -123,6 +126,7 @@ class RoomHelper:
                     "owner_id": item.get("owner_id"),
                     "public": item.get("public", False),
                     "description": item.get("description"),
+                    "admins": item.get("admins", []),
                     "start_date": item.get("start_date"),
                     "end_date": item.get("end_date"),
                 }
@@ -133,6 +137,117 @@ class RoomHelper:
 
         except ClientError as e:
             self.logger.error(f"Error fetching room {room_id}: {e}")
+            raise
+
+    def update_room(
+        self,
+        room_id: str,
+        user_id: str,
+        room_name: Optional[str] = None,
+        leagues: Optional[List[str]] = None,
+        admins: Optional[List[str]] = None,
+        start_date: Optional[int] = None,
+        end_date: Optional[int] = None,
+    ) -> dict:
+        """
+        Update room fields. Only room admins can update rooms.
+        """
+        try:
+            # Get the current room
+            room = self.get_room(room_id)
+            if not room:
+                raise RoomNotFoundException(room_id=room_id)
+
+            # Check if user is an admin
+            if user_id not in room.get("admins", []):
+                raise UnauthorizedRoomAccessException(
+                    user_id=user_id, room_id=room_id, action="update"
+                )
+
+            # Build update expression
+            update_expr_parts = []
+            expr_attr_names = {}
+            expr_attr_values = {}
+            current_time = int(datetime.utcnow().timestamp())
+
+            if room_name is not None:
+                update_expr_parts.append("room_name = :room_name")
+                expr_attr_values[":room_name"] = room_name
+
+            if leagues is not None:
+                update_expr_parts.append("leagues = :leagues")
+                expr_attr_values[":leagues"] = leagues
+
+            if admins is not None:
+                # Validate admins list is not empty
+                if not admins:
+                    from exceptions.room_exceptions import EmptyAdminsListException
+
+                    raise EmptyAdminsListException()
+                update_expr_parts.append("admins = :admins")
+                expr_attr_values[":admins"] = admins
+
+            if start_date is not None:
+                update_expr_parts.append("start_date = :start_date")
+                expr_attr_values[":start_date"] = start_date
+
+            if end_date is not None:
+                update_expr_parts.append("end_date = :end_date")
+                expr_attr_values[":end_date"] = end_date
+
+            # Always update modified timestamp
+            update_expr_parts.append("modified_at = :modified_at")
+            expr_attr_values[":modified_at"] = current_time
+
+            # Validate date range if both dates are provided or being updated
+            final_start_date = (
+                start_date if start_date is not None else room.get("start_date")
+            )
+            final_end_date = end_date if end_date is not None else room.get("end_date")
+
+            if (
+                final_start_date
+                and final_end_date
+                and final_start_date >= final_end_date
+            ):
+                from exceptions.room_exceptions import InvalidDateRangeException
+
+                raise InvalidDateRangeException()
+
+            if not update_expr_parts:
+                # No updates to make
+                return room
+
+            update_expr = "SET " + ", ".join(update_expr_parts)
+
+            # Update the room
+            response = self.table.update_item(
+                Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk},
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=expr_attr_values,
+                ReturnValues="ALL_NEW",
+            )
+
+            updated_room = response["Attributes"]
+            updated_room["room_id"] = room_id
+
+            self.logger.info(f"Updated room {room_id} by user {user_id}")
+
+            # Create audit record
+            self.audit_action_helper.create_audit_record(
+                pk=f"ROOM#{room_id}",
+                entity_type="Room",
+                action=AuditActions.UPDATE.value,
+                user_id=user_id,
+                sk=self.room_audit_sk,
+                before=room,
+                after=updated_room,
+            )
+
+            return updated_room
+
+        except ClientError as e:
+            self.logger.error(f"Error updating room {room_id}: {e}")
             raise
 
     def get_user_rooms(self, user_id: str) -> List[dict]:
@@ -177,7 +292,10 @@ class RoomHelper:
                     if room_details:
                         # Add membership info to room details
                         room_details["join_date"] = membership.get("join_date")
-                        room_details["is_owner"] = membership.get("owner") == user_id
+                        room_details["is_owner"] = room_details["owner_id"] == user_id
+                        room_details["is_admin"] = user_id in room_details.get(
+                            "admins", []
+                        )
                         room_details["membership_status"] = membership.get("status")
                         room_details["membership_type"] = membership.get(
                             "membership_type"
@@ -246,25 +364,25 @@ class RoomHelper:
 
     # Membership delegation methods - delegate to MembershipHelper
     def invite_user_to_room(
-        self, room_id: str, owner_id: str, invited_user_id: str
+        self, room_id: str, admin_id: str, invited_user_id: str
     ) -> dict:
         """
-        Owner invites a user to join a room.
-        Delegates to MembershipHelper after validating room ownership.
+        Admin invites a user to join a room.
+        Delegates to MembershipHelper after validating room admin permissions.
         """
         try:
-            # Verify the room exists and user is the owner
+            # Verify the room exists and user is an admin
             room = self.get_room(room_id)
             if not room:
                 raise RoomNotFoundException(room_id=room_id)
 
-            if room["owner_id"] != owner_id:
+            if admin_id not in room["admins"]:
                 raise UnauthorizedRoomAccessException(
-                    user_id=owner_id, room_id=room_id, action="invite users to"
+                    user_id=admin_id, room_id=room_id, action="invite users to"
                 )
 
             return self.membership_helper.invite_user_to_room(
-                room_id, room["room_name"], owner_id, invited_user_id
+                room_id, room["room_name"], admin_id, invited_user_id
             )
 
         except ClientError as e:
@@ -283,7 +401,7 @@ class RoomHelper:
                 raise RoomNotFoundException(room_id=room_id)
 
             return self.membership_helper.request_to_join_room(
-                room_id, room["room_name"], room["owner_id"], user_id
+                room_id, room["room_name"], user_id
             )
 
         except ClientError as e:
@@ -295,11 +413,33 @@ class RoomHelper:
     ) -> dict:
         """
         Respond to a membership request or invitation.
-        Delegates to MembershipHelper.
+        Validates admin permissions for requests, then delegates to MembershipHelper.
         """
-        return self.membership_helper.respond_to_membership(
-            room_id, target_user_id, responding_user_id, approve
-        )
+        try:
+            # Get the membership to check its type
+            membership = self.membership_helper.get_membership(room_id, target_user_id)
+            if not membership:
+                raise MembershipNotFoundException(
+                    user_id=target_user_id, room_id=room_id
+                )
+
+            # For requests, validate that responding user is an admin
+            if membership.get("membership_type") == MembershipType.REQUEST.value:
+                room = self.get_room(room_id)
+                if not room or responding_user_id not in room["admins"]:
+                    raise UnauthorizedRoomAccessException(
+                        user_id=responding_user_id,
+                        room_id=room_id,
+                        action="respond to requests for",
+                    )
+
+            return self.membership_helper.respond_to_membership(
+                room_id, target_user_id, responding_user_id, approve
+            )
+
+        except ClientError as e:
+            self.logger.error(f"Error responding to membership: {e}")
+            raise
 
     def get_pending_invitations(self, user_id: str) -> List[dict]:
         """
@@ -308,22 +448,20 @@ class RoomHelper:
         """
         return self.membership_helper.get_pending_invitations(user_id)
 
-    def get_pending_requests(self, room_id: str, owner_id: str) -> List[dict]:
+    def get_pending_requests(self, room_id: str, admin_id: str) -> List[dict]:
         """
-        Get all pending requests for a room (owner only).
-        Validates ownership then delegates to MembershipHelper.
+        Get all pending requests for a room (admin only).
+        Validates admin permissions then delegates to MembershipHelper.
         """
         try:
-            # Verify ownership
+            # Verify admin permissions
             room = self.get_room(room_id)
-            if not room or room["owner_id"] != owner_id:
+            if not room or admin_id not in room["admins"]:
                 raise UnauthorizedRoomAccessException(
-                    user_id=owner_id, room_id=room_id, action="view requests for"
+                    user_id=admin_id, room_id=room_id, action="view requests for"
                 )
 
-            return self.membership_helper.get_pending_requests_for_room(
-                room_id, owner_id
-            )
+            return self.membership_helper.get_pending_requests_for_room(room_id)
 
         except ClientError as e:
             self.logger.error(f"Error getting pending requests: {e}")

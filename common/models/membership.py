@@ -19,9 +19,9 @@ class MembershipStatus(Enum):
 class MembershipModel(BaseModel):
     # pk ROOM#{room_uuid}
     # sk MEMBERSHIP#{user_uuid}
-    owner: str
+    admin_id: Optional[str] = None  # Admin who can approve/deny or who sent invitation
     requestor: (
-        str  # For requests: the user requesting. For invitations: the owner inviting
+        str  # For requests: the user requesting. For invitations: the admin inviting
     )
     invited_user: Optional[str] = None  # For invitations: the user being invited
     room_name: str

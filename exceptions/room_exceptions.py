@@ -102,3 +102,29 @@ class InvalidMembershipStatusException(Exception):
         self.requested_status = requested_status
         self.message = message
         super().__init__(self.message)
+
+
+class InvalidDateRangeException(Exception):
+    """Exception raised when end_date is not after start_date."""
+
+    def __init__(self, start_date: int = None, end_date: int = None):
+        if start_date and end_date:
+            message = f"End date ({end_date}) must be after start date ({start_date})."
+        else:
+            message = "End date must be after start date."
+
+        self.start_date = start_date
+        self.end_date = end_date
+        self.message = message
+        super().__init__(self.message)
+
+
+class EmptyAdminsListException(Exception):
+    """Exception raised when admins list is empty or becomes empty."""
+
+    def __init__(
+        self,
+        message="Room admins list cannot be empty. At least one admin is required.",
+    ):
+        self.message = message
+        super().__init__(self.message)
