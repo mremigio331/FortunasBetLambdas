@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from api.decorators.exceptions_decorator import exceptions_decorator
+from api.decorators.jwt_decorator import jwt_required
 from common.helpers.jwt import decode_jwt, update_cognito_user_attributes
 from exceptions.user_exceptions import InvalidUserIdException
 import os
@@ -35,6 +36,7 @@ class CreateRoomRequest(BaseModel):
 
 @router.post("/create_room", response_model=dict)
 @exceptions_decorator
+@jwt_required()
 def create_room(request: Request, room_data: CreateRoomRequest):
     """
     Create a new room.
@@ -42,13 +44,9 @@ def create_room(request: Request, room_data: CreateRoomRequest):
     logger.append_keys(request_id=request.state.request_id)
     logger.info(f"Request body: {room_data.dict()}")
 
-    # Get user_id from the JWT token
-    user_id = getattr(request.state, "user_token", None)
-    logger.info(f"user_id from request.state.user_token: {user_id}")
-
-    if not user_id:
-        logger.warning("User ID not found in request state.")
-        raise InvalidUserIdException("User ID not found in request.")
+    # User ID is now automatically extracted and validated by the JWT decorator
+    user_id = request.state.user_id
+    logger.info(f"user_id from JWT: {user_id}")
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)

@@ -260,7 +260,7 @@ class RoomHelper:
 
     def get_all_rooms(self) -> List[dict]:
         """
-        Get all rooms with basic information (room_id, room_name, description).
+        Get all rooms with basic information (room_id, room_name, description, public, leagues).
         Returns a list of room summaries.
         """
         try:
@@ -275,7 +275,10 @@ class RoomHelper:
                         ":pk_prefix": "ROOM#",
                         ":sk": self.room_sk,
                     },
-                    "ProjectionExpression": "PK, room_name, description",
+                    "ProjectionExpression": "PK, room_name, description, #public, leagues",
+                    "ExpressionAttributeNames": {
+                        "#public": "public"  # 'public' is a reserved word
+                    },
                 }
 
                 # Add pagination key if available
@@ -295,6 +298,8 @@ class RoomHelper:
                                 "room_id": room_id,
                                 "room_name": item.get("room_name"),
                                 "description": item.get("description"),
+                                "public": item.get("public", False),
+                                "leagues": item.get("leagues", []),
                             }
                         )
 

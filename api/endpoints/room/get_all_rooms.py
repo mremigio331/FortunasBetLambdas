@@ -5,6 +5,7 @@ from aws_lambda_powertools import Logger
 from typing import List
 
 from api.decorators.exceptions_decorator import exceptions_decorator
+from api.decorators.jwt_decorator import jwt_required
 from common.helpers.jwt import decode_jwt, update_cognito_user_attributes
 from exceptions.user_exceptions import InvalidUserIdException
 import os
@@ -17,17 +18,18 @@ router = APIRouter()
 
 @router.get("/", response_model=dict)
 @exceptions_decorator
+@jwt_required()
 def get_all_rooms(request: Request):
     """
-    Get all rooms with basic information (room_id, room_name, description).
+    Get all rooms with basic information (room_id, room_name, description, public, leagues).
     Returns a list of room summaries.
     """
     logger.append_keys(request_id=request.state.request_id)
     logger.info("Getting all rooms")
 
-    # Get user_id from the JWT token (optional for this endpoint)
-    user_id = getattr(request.state, "user_token", None)
-    logger.info(f"user_id from request.state.user_token: {user_id}")
+    # User ID is now automatically extracted and validated by the JWT decorator
+    user_id = request.state.user_id
+    logger.info(f"user_id from JWT: {user_id}")
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
