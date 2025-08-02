@@ -314,9 +314,12 @@ class MembershipHelper:
             )
             current_time = int(datetime.utcnow().timestamp())
 
-            update_expr = "SET #status = :status"
+            update_expr = "SET #status = :status, admin_id = :admin_id"
             expr_attr_names = {"#status": "status"}
-            expr_attr_values = {":status": new_status.value}
+            expr_attr_values = {
+                ":status": new_status.value,
+                ":admin_id": responding_user_id,
+            }
 
             if approve:
                 update_expr += ", join_date = :join_date"
@@ -437,4 +440,124 @@ class MembershipHelper:
 
         except ClientError as e:
             self.logger.error(f"Error deleting memberships for room {room_id}: {e}")
+            raise
+
+    def get_all_membership_requests_for_user(self, user_id: str) -> List[dict]:
+        """
+        Get all membership requests where the user is the requestor.
+        Scans for records where PK starts with ROOM# and SK = MEMBERSHIP#{user_id} across all rooms.
+        Handles pagination to ensure all results are returned.
+        """
+        try:
+            all_memberships = []
+            last_evaluated_key = None
+
+            while True:
+                scan_kwargs = {
+                    "FilterExpression": "begins_with(PK, :pk_prefix) AND SK = :sk",
+                    "ExpressionAttributeValues": {
+                        ":pk_prefix": "ROOM#",
+                        ":sk": f"MEMBERSHIP#{user_id}",
+                    },
+                }
+
+                if last_evaluated_key:
+                    scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                response = self.table.scan(**scan_kwargs)
+                memberships = response.get("Items", [])
+                all_memberships.extend(memberships)
+
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
+
+            self.logger.info(
+                f"Found {len(all_memberships)} membership requests for user {user_id}"
+            )
+            return all_memberships
+
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching membership requests for user {user_id}: {e}"
+            )
+            raise
+
+    def get_admin_room_ids_for_user(self, user_id: str) -> List[str]:
+        """
+        Get all room IDs where the user has admin privileges.
+        Returns a list of room_ids where the user is in the admins list.
+        """
+        try:
+            admin_room_ids = []
+            last_evaluated_key = None
+
+            while True:
+                scan_kwargs = {
+                    "FilterExpression": "begins_with(PK, :pk_prefix) AND SK = :sk AND contains(admins, :user_id)",
+                    "ExpressionAttributeValues": {
+                        ":pk_prefix": "ROOM#",
+                        ":sk": "ROOM",
+                        ":user_id": user_id,
+                    },
+                }
+
+                if last_evaluated_key:
+                    scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                response = self.table.scan(**scan_kwargs)
+                rooms = response.get("Items", [])
+
+                for room in rooms:
+                    # Extract room_id from PK (ROOM#{room_id})
+                    room_id = room["PK"].replace("ROOM#", "")
+                    admin_room_ids.append(room_id)
+
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
+
+            self.logger.info(
+                f"Found {len(admin_room_ids)} rooms where user {user_id} is admin"
+            )
+            return admin_room_ids
+
+        except ClientError as e:
+            self.logger.error(f"Error fetching admin room IDs for user {user_id}: {e}")
+            raise
+
+    def get_membership_requests_for_rooms(self, room_ids: List[str]) -> List[dict]:
+        """
+        Get all membership requests for the specified room IDs.
+        Returns all membership records across the provided rooms.
+        """
+        try:
+            all_membership_requests = []
+
+            for room_id in room_ids:
+                # Query for all membership requests in this room
+                membership_response = self.table.scan(
+                    FilterExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                    ExpressionAttributeValues={
+                        ":pk": f"ROOM#{room_id}",
+                        ":sk_prefix": self.membership_sk_prefix,
+                    },
+                )
+
+                room_memberships = membership_response.get("Items", [])
+                # Add room_id to each membership for context
+                for membership in room_memberships:
+                    membership["room_id"] = room_id
+
+                all_membership_requests.extend(room_memberships)
+
+            self.logger.info(
+                f"Found {len(all_membership_requests)} total membership requests across {len(room_ids)} rooms"
+            )
+            return all_membership_requests
+
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching membership requests for rooms {room_ids}: {e}"
+            )
             raise

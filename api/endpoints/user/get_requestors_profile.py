@@ -34,27 +34,23 @@ def get_requestors_profile(request: Request):
         logger.warning("Token User ID could not be extracted from JWT.")
         raise InvalidUserIdException("Token User ID is required.")
 
-    # Use the helper directly
     user_helper = UserProfileHelper(request_id=request.state.request_id)
     user_profile_data = user_helper.get_user_profile(user_id=token_user_id)
     if not user_profile_data:
         logger.warning(f"User profile not found for user_id: {token_user_id}")
         raise UserNotFound(f"User with ID {token_user_id} not found.")
 
-    # Interact with the returned dict
     public_profile = user_profile_data.get("public_profile")
     db_user_id = user_profile_data.get("user_id")
 
     logger.info(f"Public profile flag: {public_profile}")
 
-    # If the user_id from the table matches the token user_id, return the profile
     if db_user_id == token_user_id:
         logger.info("Access granted: user is profile owner.")
         return JSONResponse(
             content={"user_profile": user_profile_data}, status_code=200
         )
 
-    # Otherwise, access denied
     logger.info("Access denied: profile is not public and requester is not owner.")
     raise ProfileNotPublicOrDoesNotExist(
         "Access denied: profile is not public or does not exist."

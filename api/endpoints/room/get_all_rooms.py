@@ -16,7 +16,7 @@ logger = Logger(service=API_SERVICE)
 router = APIRouter()
 
 
-@router.get("/", response_model=dict)
+@router.get("/get_all_rooms", response_model=dict)
 @exceptions_decorator
 @jwt_required()
 def get_all_rooms(request: Request):
@@ -27,17 +27,14 @@ def get_all_rooms(request: Request):
     logger.append_keys(request_id=request.state.request_id)
     logger.info("Getting all rooms")
 
-    # User ID is now automatically extracted and validated by the JWT decorator
     user_id = request.state.user_id
     logger.info(f"user_id from JWT: {user_id}")
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
 
-        # Get all rooms
         rooms = room_helper.get_all_rooms()
 
-        # Convert to JSON-serializable format
         rooms_dict = jsonable_encoder(rooms)
         logger.info(f"Successfully retrieved {len(rooms)} rooms")
 

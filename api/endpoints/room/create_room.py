@@ -44,14 +44,12 @@ def create_room(request: Request, room_data: CreateRoomRequest):
     logger.append_keys(request_id=request.state.request_id)
     logger.info(f"Request body: {room_data.dict()}")
 
-    # User ID is now automatically extracted and validated by the JWT decorator
     user_id = request.state.user_id
     logger.info(f"user_id from JWT: {user_id}")
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
 
-        # Create the room
         created_room = room_helper.create_room(
             room_name=room_data.room_name,
             leagues=room_data.leagues,
@@ -62,7 +60,6 @@ def create_room(request: Request, room_data: CreateRoomRequest):
             end_date=room_data.end_date,
         )
 
-        # Convert to JSON-serializable format
         room_dict = jsonable_encoder(created_room)
         logger.info(f"Successfully created room for user_id {user_id}: {room_dict}")
 

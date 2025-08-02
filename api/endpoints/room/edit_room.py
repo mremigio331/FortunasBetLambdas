@@ -50,18 +50,15 @@ def edit_room(request: Request, room_data: EditRoomRequest):
         f"Editing room {room_data.room_id} with data: {room_data.dict() if room_data else {}}"
     )
 
-    # User ID is now automatically extracted and validated by the JWT decorator
     user_id = request.state.user_id
     logger.info(f"user_id from JWT: {user_id}")
 
-    # If no data provided, return an error
     if not room_data:
         return JSONResponse(
             status_code=400,
             content={"message": "No data provided for room update"},
         )
 
-    # Check if at least one field is provided for update
     update_fields = room_data.dict(exclude_unset=True)
     if not update_fields:
         return JSONResponse(
@@ -72,7 +69,6 @@ def edit_room(request: Request, room_data: EditRoomRequest):
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
 
-        # Update the room
         updated_room = room_helper.update_room(
             room_id=room_data.room_id,
             user_id=user_id,
@@ -84,7 +80,6 @@ def edit_room(request: Request, room_data: EditRoomRequest):
             end_date=room_data.end_date,
         )
 
-        # Convert to JSON-serializable format
         room_dict = jsonable_encoder(updated_room)
         logger.info(
             f"Successfully updated room {room_data.room_id} by user_id {user_id}: {room_dict}"

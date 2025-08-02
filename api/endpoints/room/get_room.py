@@ -32,20 +32,17 @@ def get_room(
     logger.append_keys(request_id=request.state.request_id)
     logger.info(f"Getting room {room_id}")
 
-    # User ID is now automatically extracted and validated by the JWT decorator
     user_id = request.state.user_id
     logger.info(f"user_id from JWT: {user_id}")
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
 
-        # Get the room
         room = room_helper.get_room(room_id)
 
         if not room:
             raise RoomNotFoundException(room_id=room_id)
 
-        # Convert to JSON-serializable format
         room_dict = jsonable_encoder(room)
         logger.info(f"Successfully retrieved room {room_id}")
 

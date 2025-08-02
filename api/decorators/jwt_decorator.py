@@ -5,6 +5,8 @@ from common.helpers.jwt import decode_jwt
 from exceptions.jwt_exeptions import MissingJWTException, InvalidJWTException
 from exceptions.user_exceptions import InvalidUserIdException
 from common.constants.services import API_SERVICE
+import asyncio
+import inspect
 
 logger = Logger(service=API_SERVICE)
 
@@ -40,7 +42,10 @@ def jwt_required(optional: bool = False):
                         request.state.user_id = None
                         request.state.user_token = None
                         logger.info("No JWT token provided for optional endpoint")
-                        return await func(request, *args, **kwargs)
+                        if inspect.iscoroutinefunction(func):
+                            return await func(request, *args, **kwargs)
+                        else:
+                            return func(request, *args, **kwargs)
                     else:
                         logger.warning("Missing Authorization header")
                         raise MissingJWTException("Authorization header is required")
@@ -53,7 +58,10 @@ def jwt_required(optional: bool = False):
                         logger.info(
                             "Invalid Authorization header format for optional endpoint"
                         )
-                        return await func(request, *args, **kwargs)
+                        if inspect.iscoroutinefunction(func):
+                            return await func(request, *args, **kwargs)
+                        else:
+                            return func(request, *args, **kwargs)
                     else:
                         logger.warning("Invalid Authorization header format")
                         raise InvalidJWTException(
@@ -81,7 +89,10 @@ def jwt_required(optional: bool = False):
                         logger.info(
                             "No user_id found in JWT claims for optional endpoint"
                         )
-                        return await func(request, *args, **kwargs)
+                        if inspect.iscoroutinefunction(func):
+                            return await func(request, *args, **kwargs)
+                        else:
+                            return func(request, *args, **kwargs)
                     else:
                         logger.warning(f"No user_id found in JWT claims: {claims}")
                         raise InvalidUserIdException("User ID not found in JWT token")
@@ -92,7 +103,10 @@ def jwt_required(optional: bool = False):
                 request.state.jwt_claims = claims
 
                 logger.info(f"Authenticated user: {user_id}")
-                return await func(request, *args, **kwargs)
+                if inspect.iscoroutinefunction(func):
+                    return await func(request, *args, **kwargs)
+                else:
+                    return func(request, *args, **kwargs)
 
             except (MissingJWTException, InvalidJWTException, InvalidUserIdException):
                 # Re-raise these specific exceptions
@@ -102,7 +116,10 @@ def jwt_required(optional: bool = False):
                     request.state.user_id = None
                     request.state.user_token = None
                     logger.warning(f"JWT processing error for optional endpoint: {e}")
-                    return await func(request, *args, **kwargs)
+                    if inspect.iscoroutinefunction(func):
+                        return await func(request, *args, **kwargs)
+                    else:
+                        return func(request, *args, **kwargs)
                 else:
                     logger.error(f"Unexpected error processing JWT: {e}")
                     raise InvalidJWTException(f"Error processing JWT: {e}")
