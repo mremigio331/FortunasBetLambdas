@@ -52,7 +52,7 @@ def inject_user_token():
         if id_token and not any(k == b"authorization" for k, v in headers):
             headers.append((b"authorization", f"Bearer {id_token}".encode("latin-1")))
             scope["headers"] = headers
-        # Optionally, adjust for local vs. staging/prod (no-op here, but you could add logic if needed)
+        # Optionally, adjust for local vs. testing/prod (no-op here, but you could add logic if needed)
         orig_init(self, *args, **kwargs)
 
     StarletteRequest.__init__ = new_init

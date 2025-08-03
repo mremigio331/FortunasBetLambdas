@@ -35,8 +35,8 @@ class CreateRoomRequest(BaseModel):
 
 
 @router.post("/create_room", response_model=dict)
-@exceptions_decorator
 @jwt_required()
+@exceptions_decorator
 def create_room(request: Request, room_data: CreateRoomRequest):
     """
     Create a new room.

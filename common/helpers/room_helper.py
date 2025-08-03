@@ -275,7 +275,7 @@ class RoomHelper:
                         ":pk_prefix": "ROOM#",
                         ":sk": self.room_sk,
                     },
-                    "ProjectionExpression": "PK, room_name, description, #public, leagues",
+                    "ProjectionExpression": "PK, room_name, description, #public, leagues, owner_id, admins",
                     "ExpressionAttributeNames": {
                         "#public": "public"  # 'public' is a reserved word
                     },
@@ -300,6 +300,8 @@ class RoomHelper:
                                 "description": item.get("description"),
                                 "public": item.get("public", False),
                                 "leagues": item.get("leagues", []),
+                                "owner_id": item.get("owner_id"),
+                                "admins": item.get("admins", []),
                             }
                         )
 

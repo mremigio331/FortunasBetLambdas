@@ -38,8 +38,8 @@ class EditRoomRequest(BaseModel):
 
 
 @router.put("/edit_room", response_model=dict)
-@exceptions_decorator
 @jwt_required()
+@exceptions_decorator
 def edit_room(request: Request, room_data: EditRoomRequest):
     """
     Edit an existing room. Only room admins can edit rooms.

@@ -17,8 +17,8 @@ router = APIRouter()
 
 
 @router.get("/get_all_rooms", response_model=dict)
-@exceptions_decorator
 @jwt_required()
+@exceptions_decorator
 def get_all_rooms(request: Request):
     """
     Get all rooms with basic information (room_id, room_name, description, public, leagues).

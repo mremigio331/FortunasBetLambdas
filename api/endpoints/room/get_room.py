@@ -18,7 +18,7 @@ logger = Logger(service=API_SERVICE)
 router = APIRouter()
 
 
-@router.get("/{room_id}", response_model=dict)
+@router.get("/get_room/{room_id}", response_model=dict)
 @jwt_required()
 @exceptions_decorator
 def get_room(
