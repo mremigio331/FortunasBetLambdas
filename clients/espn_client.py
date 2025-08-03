@@ -72,6 +72,9 @@ class ESPNClient:
                             "name": team_info.get("displayName"),
                             "abbreviation": team_info.get("abbreviation"),
                             "logo": team_info.get("logo"),
+                            "score": competitor.get("score"),
+                            "winner": competitor.get("winner", False),
+                            "records": competitor.get("records", []),
                         }
 
                         if competitor.get("homeAway") == "home":
@@ -79,11 +82,34 @@ class ESPNClient:
                         else:
                             away_team = team_data
 
+                    # Extract game status information
+                    status = comp.get("status", {})
+                    game_status = {
+                        "type": status.get("type", {}),
+                        "period": status.get("period", 0),
+                        "displayClock": status.get("displayClock", ""),
+                        "completed": status.get("type", {}).get("completed", False),
+                        "state": status.get("type", {}).get("state", "pre"),
+                        "detail": status.get("type", {}).get("detail", ""),
+                        "shortDetail": status.get("type", {}).get("shortDetail", ""),
+                    }
+
+                    # Extract venue information
+                    venue = comp.get("venue", {})
+                    venue_info = {
+                        "name": venue.get("fullName", ""),
+                        "city": venue.get("address", {}).get("city", ""),
+                        "state": venue.get("address", {}).get("state", ""),
+                        "indoor": venue.get("indoor", False),
+                    }
+
                     game_data = {
                         "matchup": event["name"],
                         "date": event["date"],
                         "game_id": event.get("id"),
                         "teams": {"home": home_team, "away": away_team},
+                        "status": game_status,
+                        "venue": venue_info,
                         "spread": None,
                         "spreadDetails": None,
                         "favoredTeam": None,

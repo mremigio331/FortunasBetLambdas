@@ -13,6 +13,10 @@ ESPN_SUCCESS = "ESPNSuccess"
 ESPN_EXCEPTION = "ESPNException"
 LEAGUE_DIMENSION = "League"
 
+# NFL Weeks Endpoint Constants
+GET_NFL_WEEKS_SUCCESS = "GetNFLWeeksSuccess"
+GET_NFL_WEEKS_EXCEPTION = "GetNFLWeeksException"
+
 # ESPN League Paths
 ESPN_LEAGUE_PATHS = {
     "nfl": "football/nfl",

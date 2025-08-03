@@ -13,7 +13,7 @@ from api.endpoints.membership import (
     create_membership_request,
     edit_membership_requests,
 )
-from api.endpoints.odds import get_nfl_odds
+from api.endpoints.odds import get_nfl_odds, get_nfl_weeks_in_range
 from common.constants.tags import HOME, USER_PROFILE, ROOM, MEMBERSHIP, ODDS
 from fastapi import FastAPI
 
@@ -55,5 +55,6 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     )
 
     app.include_router(get_nfl_odds.router, prefix="/odds", tags=[ODDS])
+    app.include_router(get_nfl_weeks_in_range.router, prefix="/odds", tags=[ODDS])
 
     return app
