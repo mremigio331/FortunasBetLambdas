@@ -54,9 +54,9 @@ def exceptions_decorator(func):
                     "message": str(exc) or "Bet not found.",
                     "room_id": exc.room_id,
                     "user_id": exc.user_id,
-                    "points_wagered": exc.points_wagered
-                }, 
-                status_code=404
+                    "points_wagered": exc.points_wagered,
+                },
+                status_code=404,
             )
         except InvalidUserIdException as exc:
             return JSONResponse(
@@ -74,7 +74,8 @@ def exceptions_decorator(func):
             GameDataNotFoundException,
         ) as exc:
             return JSONResponse(
-                content={"message": str(exc) or "Invalid request data."}, status_code=400
+                content={"message": str(exc) or "Invalid request data."},
+                status_code=400,
             )
         except DuplicateBetException as exc:
             return JSONResponse(
@@ -82,18 +83,18 @@ def exceptions_decorator(func):
                     "message": str(exc) or "Bet already exists.",
                     "room_id": exc.room_id,
                     "user_id": exc.user_id,
-                    "points_wagered": exc.points_wagered
-                }, 
-                status_code=409
+                    "points_wagered": exc.points_wagered,
+                },
+                status_code=409,
             )
         except MembershipAlreadyExistsException as exc:
             return JSONResponse(
                 content={
                     "message": str(exc) or "Membership request already exists.",
                     "room_id": exc.room_id,
-                    "user_id": exc.user_id
-                }, 
-                status_code=409
+                    "user_id": exc.user_id,
+                },
+                status_code=409,
             )
         except (InvalidJWTException, JWTSignatureException) as exc:
             return JSONResponse(
@@ -120,7 +121,7 @@ def exceptions_decorator(func):
             return JSONResponse(
                 content={
                     "message": str(exc) or "Unable to retrieve user profile.",
-                    "user_id": exc.user_id
+                    "user_id": exc.user_id,
                 },
                 status_code=500,
             )

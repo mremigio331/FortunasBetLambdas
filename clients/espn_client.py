@@ -211,3 +211,118 @@ class ESPNClient:
             self.metrics.flush_metrics()
             self.logger.error(f"Request failed: {e}")
             return {}
+
+    def get_event(self, sport: str, league: str, event_id: str):
+        """
+        Returns event data for a specific event by ID.
+
+        Args:
+            sport: The sport (e.g., 'football')
+            league: The league (e.g., 'nfl')
+            event_id: The ESPN event ID
+
+        Returns:
+            dict: Event data including status information
+        """
+        self.metrics.add_dimension(
+            name=ENDPOINT, value=f"/sports/{sport}/{league}/summary"
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value=league.upper())
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/summary?event={event_id}"
+
+            self.logger.info(f"Fetching event data from: {url}")
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            # Log the full response to see the structure
+            self.logger.info(f"ESPN API Response structure: {list(data.keys())}")
+
+            # Extract relevant event information
+            event_data = {}
+
+            # Check different possible structures in the ESPN response
+            if "header" in data:
+                header = data["header"]
+                self.logger.info(f"Header structure: {list(header.keys())}")
+
+                # Look for competition data in header
+                if "competitions" in header and len(header["competitions"]) > 0:
+                    competition = header["competitions"][0]
+                    self.logger.info(
+                        f"Competition structure: {list(competition.keys())}"
+                    )
+
+                    # Extract status information
+                    status = competition.get("status", {})
+                    status_type = status.get("type", {})
+
+                    self.logger.info(f"Status structure: {status}")
+
+                    event_data = {
+                        "id": competition.get("id"),
+                        "date": competition.get("date"),
+                        "status": {
+                            "name": status_type.get("name", ""),
+                            "state": status_type.get("state", ""),
+                            "completed": status_type.get("completed", False),
+                            "detail": status_type.get("detail", ""),
+                            "shortDetail": status_type.get("shortDetail", ""),
+                        },
+                        "startDate": competition.get("startDate"),
+                    }
+
+                elif "competition" in header:
+                    # Alternative structure
+                    competition = header["competition"]
+                    self.logger.info(
+                        f"Alternative competition structure: {list(competition.keys())}"
+                    )
+
+                    # Extract status information
+                    status = competition.get("status", {})
+                    status_type = status.get("type", {})
+
+                    self.logger.info(f"Status structure: {status}")
+
+                    event_data = {
+                        "id": competition.get("id"),
+                        "date": competition.get("date"),
+                        "status": {
+                            "name": status_type.get("name", ""),
+                            "state": status_type.get("state", ""),
+                            "completed": status_type.get("completed", False),
+                            "detail": status_type.get("detail", ""),
+                            "shortDetail": status_type.get("shortDetail", ""),
+                        },
+                        "startDate": competition.get("startDate"),
+                    }
+                else:
+                    self.logger.warning(
+                        f"No competition data found in header. Available keys: {list(header.keys())}"
+                    )
+            else:
+                self.logger.warning(
+                    f"No header found in ESPN response. Available keys: {list(data.keys())}"
+                )
+
+            if not event_data:
+                self.logger.warning(
+                    f"Could not extract event data from ESPN response. Full response logged."
+                )
+                # Log a subset of the response for debugging (first few keys)
+                debug_data = {k: v for k, v in list(data.items())[:5]}
+                self.logger.info(f"ESPN response sample: {debug_data}")
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return event_data
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Request failed: {e}")
+            return {}

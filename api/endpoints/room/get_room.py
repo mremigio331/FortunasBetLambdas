@@ -12,6 +12,7 @@ from exceptions.user_exceptions import InvalidUserIdException
 from exceptions.room_exceptions import RoomNotFoundException
 import os
 from common.helpers.room_helper import RoomHelper
+from common.helpers.user_profile_helper import UserProfileHelper
 from common.constants.services import API_SERVICE
 
 logger = Logger(service=API_SERVICE)
@@ -37,11 +38,27 @@ def get_room(
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
+        user_profile_helper = UserProfileHelper(request_id=request.state.request_id)
 
         room = room_helper.get_room(room_id)
 
         if not room:
             raise RoomNotFoundException(room_id=room_id)
+
+        # Get admin user profiles
+        admin_ids = room.get("admin_user_ids", []) or room.get("admins", [])
+        if admin_ids:
+            admin_profiles = user_profile_helper.get_multiple_user_profiles(admin_ids)
+            room["admin_profiles"] = [
+                {
+                    "user_id": admin_id,
+                    "user_name": admin_profiles.get(admin_id, {}).get("name", admin_id),
+                    "user_color": admin_profiles.get(admin_id, {}).get(
+                        "color", "black"
+                    ),
+                }
+                for admin_id in admin_ids
+            ]
 
         room_dict = jsonable_encoder(room)
         logger.info(f"Successfully retrieved room {room_id}")

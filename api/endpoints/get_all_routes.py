@@ -12,9 +12,13 @@ from api.endpoints.membership import (
     get_admin_requests,
     create_membership_request,
     edit_membership_requests,
+    get_user_membership_requests,
+    get_room_members,
+    change_member_status,
 )
+from api.endpoints.bet import create_bet, get_bets_for_room
 from api.endpoints.odds import get_nfl_odds, get_nfl_weeks_in_range
-from common.constants.tags import HOME, USER_PROFILE, ROOM, MEMBERSHIP, ODDS
+from common.constants.tags import BET, HOME, USER_PROFILE, ROOM, MEMBERSHIP, ODDS
 from fastapi import FastAPI
 
 
@@ -53,8 +57,18 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(
         edit_membership_requests.router, prefix="/membership", tags=[MEMBERSHIP]
     )
+    app.include_router(
+        get_user_membership_requests.router, prefix="/membership", tags=[MEMBERSHIP]
+    )
+    app.include_router(get_room_members.router, prefix="/membership", tags=[MEMBERSHIP])
+    app.include_router(
+        change_member_status.router, prefix="/membership", tags=[MEMBERSHIP]
+    )
 
     app.include_router(get_nfl_odds.router, prefix="/odds", tags=[ODDS])
     app.include_router(get_nfl_weeks_in_range.router, prefix="/odds", tags=[ODDS])
+
+    app.include_router(create_bet.router, prefix="/bet", tags=[BET])
+    app.include_router(get_bets_for_room.router, prefix="/bet", tags=[BET])
 
     return app

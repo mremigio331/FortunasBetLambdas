@@ -29,7 +29,6 @@ async def get_nfl_weeks_in_range(
     Parameters:
     - start_date: Start date in epoch timestamp
     - end_date: End date in epoch timestamp
-    - request_id: Optional request ID for tracking
 
     Returns:
     - List of NFL weeks with season information that fall within the date range

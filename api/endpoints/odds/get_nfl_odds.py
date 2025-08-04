@@ -58,6 +58,8 @@ def get_nfl_odds(
                     "week": week,
                     "year": year,
                     "season_type": season_type,
+                    "sport": "football",
+                    "league": "nfl",
                 },
             )
 
@@ -73,6 +75,8 @@ def get_nfl_odds(
                 "week": week,
                 "year": year,
                 "season_type": season_type,
+                "sport": "football",
+                "league": "nfl",
             },
         )
 
