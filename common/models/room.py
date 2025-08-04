@@ -9,7 +9,7 @@ from exceptions.room_exceptions import (
     EmptyAdminsListException,
 )
 
-allowed_leagues = ["MLB", "NFL"]
+allowed_leagues = ["NFL"]
 
 
 class RoomModel(BaseModel):

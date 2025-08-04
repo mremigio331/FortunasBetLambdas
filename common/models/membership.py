@@ -8,6 +8,8 @@ from enum import Enum
 class MembershipType(Enum):
     REQUEST = "request"  # User requested to join
     INVITATION = "invitation"  # Owner invited user
+    ADMIN = "admin"  # User is an admin of the room
+    MEMBER = "member"  # User is a regular member of the room
 
 
 class MembershipStatus(Enum):
@@ -35,6 +37,12 @@ class MembershipModel(BaseModel):
         membership_type = values.get("membership_type")
         if membership_type == MembershipType.INVITATION and not v:
             raise ValueError("invited_user is required for invitations")
-        if membership_type == MembershipType.REQUEST and v:
-            raise ValueError("invited_user should not be set for requests")
+        if (
+            membership_type
+            in [MembershipType.REQUEST, MembershipType.ADMIN, MembershipType.MEMBER]
+            and v
+        ):
+            raise ValueError(
+                "invited_user should not be set for requests, admin, or member memberships"
+            )
         return v
