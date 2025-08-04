@@ -10,4 +10,25 @@ class UserProfileModel(BaseModel):
     email: EmailStr
     name: str
     created_at: int  # Epoch timestamp
-    public_profile: Optional[bool] = False
+    color: str = "black"  # Default color for user profile avatar
+
+    @validator("color")
+    def validate_color(cls, v):
+        """Validate that color is one of the allowed basic colors"""
+        allowed_colors = [
+            "black",
+            "white",
+            "red",
+            "blue",
+            "green",
+            "yellow",
+            "orange",
+            "purple",
+            "pink",
+            "brown",
+            "gray",
+            "cyan",
+        ]
+        if v.lower() not in allowed_colors:
+            raise ValueError(f'Color must be one of: {", ".join(allowed_colors)}')
+        return v.lower()

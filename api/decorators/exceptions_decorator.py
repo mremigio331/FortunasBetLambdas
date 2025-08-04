@@ -17,6 +17,17 @@ from exceptions.room_exceptions import (
     UnauthorizedRoomAccessException,
     InvalidDateRangeException,
     EmptyAdminsListException,
+    MembershipAlreadyExistsException,
+)
+from exceptions.bet_exceptions import (
+    DuplicateBetException,
+    BetNotFound,
+    InvalidGameStatusException,
+    InvalidPointsWageredException,
+    InvalidBetTypeException,
+    BetLockedException,
+    UserProfileNotFoundException,
+    GameDataNotFoundException,
 )
 from fastapi.responses import JSONResponse
 from botocore.exceptions import ClientError
@@ -37,6 +48,16 @@ def exceptions_decorator(func):
             return JSONResponse(
                 content={"message": str(exc) or "Room not found."}, status_code=404
             )
+        except BetNotFound as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Bet not found.",
+                    "room_id": exc.room_id,
+                    "user_id": exc.user_id,
+                    "points_wagered": exc.points_wagered
+                }, 
+                status_code=404
+            )
         except InvalidUserIdException as exc:
             return JSONResponse(
                 content={"message": str(exc) or "Invalid user ID."}, status_code=400
@@ -46,9 +67,33 @@ def exceptions_decorator(func):
             EmptyLeagueListException,
             InvalidDateRangeException,
             EmptyAdminsListException,
+            InvalidGameStatusException,
+            InvalidPointsWageredException,
+            InvalidBetTypeException,
+            BetLockedException,
+            GameDataNotFoundException,
         ) as exc:
             return JSONResponse(
-                content={"message": str(exc) or "Invalid room data."}, status_code=400
+                content={"message": str(exc) or "Invalid request data."}, status_code=400
+            )
+        except DuplicateBetException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Bet already exists.",
+                    "room_id": exc.room_id,
+                    "user_id": exc.user_id,
+                    "points_wagered": exc.points_wagered
+                }, 
+                status_code=409
+            )
+        except MembershipAlreadyExistsException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Membership request already exists.",
+                    "room_id": exc.room_id,
+                    "user_id": exc.user_id
+                }, 
+                status_code=409
             )
         except (InvalidJWTException, JWTSignatureException) as exc:
             return JSONResponse(
@@ -71,6 +116,14 @@ def exceptions_decorator(func):
             )
 
         ### 5XX
+        except UserProfileNotFoundException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Unable to retrieve user profile.",
+                    "user_id": exc.user_id
+                },
+                status_code=500,
+            )
         except ClientError as exc:
             return JSONResponse(
                 content={"message": str(exc) or "Internal server error."},

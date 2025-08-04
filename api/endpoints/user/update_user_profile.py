@@ -23,8 +23,9 @@ router = APIRouter()
 class UpdateUserProfileRequest(BaseModel):
     email: Optional[str] = Field(None, description="The user's email address")
     name: Optional[str] = Field(None, description="The user's name")
-    public_profile: Optional[bool] = Field(
-        None, description="Whether the user's profile is public or private"
+    color: Optional[str] = Field(
+        None,
+        description="The user's avatar color (black, white, red, blue, green, yellow, orange, purple, pink, brown, gray, cyan)",
     )
 
 
@@ -48,7 +49,7 @@ def update_user_profile(request: Request, user_profile: UpdateUserProfileRequest
             user_id=user_id,
             name=user_profile.name,
             email=user_profile.email,
-            public_profile=user_profile.public_profile,
+            color=user_profile.color,
         )
         if updated_profile:
             try:

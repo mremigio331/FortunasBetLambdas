@@ -38,17 +38,9 @@ def create_membership_request(
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
 
-        # Get room details to get room name
-        room = room_helper.get_room(membership_request.room_id)
-        if not room:
-            raise HTTPException(
-                status_code=404, detail=f"Room {membership_request.room_id} not found"
-            )
-
         # Create the membership request using room helper (it handles business logic)
         membership = room_helper.request_to_join_room(
             room_id=membership_request.room_id,
-            room_name=room["room_name"],
             user_id=user_id,
         )
 

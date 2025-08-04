@@ -40,10 +40,7 @@ def get_requestors_profile(request: Request):
         logger.warning(f"User profile not found for user_id: {token_user_id}")
         raise UserNotFound(f"User with ID {token_user_id} not found.")
 
-    public_profile = user_profile_data.get("public_profile")
     db_user_id = user_profile_data.get("user_id")
-
-    logger.info(f"Public profile flag: {public_profile}")
 
     if db_user_id == token_user_id:
         logger.info("Access granted: user is profile owner.")
@@ -51,7 +48,5 @@ def get_requestors_profile(request: Request):
             content={"user_profile": user_profile_data}, status_code=200
         )
 
-    logger.info("Access denied: profile is not public and requester is not owner.")
-    raise ProfileNotPublicOrDoesNotExist(
-        "Access denied: profile is not public or does not exist."
-    )
+    logger.info("Access denied: requester is not profile owner.")
+    raise ProfileNotPublicOrDoesNotExist("Access denied: profile does not exist.")
