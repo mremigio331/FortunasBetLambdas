@@ -296,6 +296,24 @@ class ESPNClient:
 
                     self.logger.info(f"Status structure: {status}")
 
+                    # Extract competitor information (teams and scores)
+                    competitors = competition.get("competitors", [])
+                    teams_data = []
+
+                    for competitor in competitors:
+                        team_info = competitor.get("team", {})
+                        team_data = {
+                            "id": team_info.get("id"),
+                            "name": team_info.get("displayName", ""),
+                            "abbreviation": team_info.get("abbreviation", ""),
+                            "homeAway": competitor.get("homeAway", ""),
+                            "score": competitor.get("score", "0"),
+                            "winner": competitor.get("winner", False),
+                        }
+                        teams_data.append(team_data)
+
+                    self.logger.info(f"Extracted {len(teams_data)} teams with scores")
+
                     event_data = {
                         "id": competition.get("id"),
                         "date": competition.get("date"),
@@ -307,6 +325,7 @@ class ESPNClient:
                             "shortDetail": status_type.get("shortDetail", ""),
                         },
                         "startDate": competition.get("startDate"),
+                        "competitors": teams_data,
                     }
 
                 elif "competition" in header:
@@ -322,6 +341,24 @@ class ESPNClient:
 
                     self.logger.info(f"Status structure: {status}")
 
+                    # Extract competitor information (teams and scores)
+                    competitors = competition.get("competitors", [])
+                    teams_data = []
+
+                    for competitor in competitors:
+                        team_info = competitor.get("team", {})
+                        team_data = {
+                            "id": team_info.get("id"),
+                            "name": team_info.get("displayName", ""),
+                            "abbreviation": team_info.get("abbreviation", ""),
+                            "homeAway": competitor.get("homeAway", ""),
+                            "score": competitor.get("score", "0"),
+                            "winner": competitor.get("winner", False),
+                        }
+                        teams_data.append(team_data)
+
+                    self.logger.info(f"Extracted {len(teams_data)} teams with scores")
+
                     event_data = {
                         "id": competition.get("id"),
                         "date": competition.get("date"),
@@ -333,6 +370,7 @@ class ESPNClient:
                             "shortDetail": status_type.get("shortDetail", ""),
                         },
                         "startDate": competition.get("startDate"),
+                        "competitors": teams_data,
                     }
                 else:
                     self.logger.warning(

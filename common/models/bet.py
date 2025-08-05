@@ -57,6 +57,7 @@ class BetModel(BaseModel):
     # Week/Room info
     room_id: str
     season_type: int  # 1=preseason, 2=regular, 3=postseason
+    week: int  # Week number within the season (from ESPN API)
     event_datetime: (
         int  # Epoch timestamp of the event/game week (used in SK for uniqueness)
     )
@@ -73,9 +74,7 @@ class BetModel(BaseModel):
     total_points_earned: Optional[int] = None
 
     # Submission info
-    locked: bool
     submitted_at: int  # Epoch timestamp
-    updated_at: Optional[int] = None  # Last update timestamp
 
     # Original odds data at time of bet (for reference)
     odds_snapshot: Dict[str, Any]  # Single game odds data

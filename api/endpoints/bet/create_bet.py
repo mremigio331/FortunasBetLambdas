@@ -76,6 +76,7 @@ class CreateBetRequest(BaseModel):
     season_type: int = Field(
         ..., description="Season type (1=preseason, 2=regular, 3=postseason)"
     )
+    week: int = Field(..., description="Week number within the season (from ESPN API)")
     event_datetime: int = Field(
         ..., description="Epoch timestamp of the event/game week"
     )
@@ -155,6 +156,7 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
     bet = BetModel(
         room_id=bet_request.room_id,
         season_type=bet_request.season_type,
+        week=bet_request.week,
         event_datetime=bet_request.event_datetime,
         game_id=bet_request.game_id,
         sport=bet_request.sport,
