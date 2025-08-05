@@ -21,13 +21,12 @@ class RoomHelper:
     A class to interact with DynamoDB for Room operations in the FortunasBet application.
     """
 
-    def __init__(self, request_id: str = None):
+    def __init__(self, request_id: str):
         self.dynamodb = boto3.resource("dynamodb", region_name="us-west-2")
         table_name = os.getenv("TABLE_NAME")
         self.table = self.dynamodb.Table(table_name)
         self.logger = Logger()
-        if request_id:
-            self.logger.append_keys(request_id=request_id)
+        self.logger.append_keys(request_id=request_id)
         self.room_sk = "ROOM"
         self.room_audit_sk = "ROOM_AUDIT"
         self.audit_action_helper = AuditActionHelper(request_id=request_id)

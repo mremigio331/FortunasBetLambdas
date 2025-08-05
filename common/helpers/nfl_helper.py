@@ -9,10 +9,9 @@ class NFLHelper:
     A class to handle NFL-related operations and calculations in the FortunasBet application.
     """
 
-    def __init__(self, request_id: str = None):
+    def __init__(self, request_id: str):
         self.logger = Logger()
-        if request_id:
-            self.logger.append_keys(request_id=request_id)
+        self.logger.append_keys(request_id=request_id)
 
     def get_nfl_season_info(self) -> Dict:
         """
@@ -219,3 +218,97 @@ class NFLHelper:
                 return week
 
         return None
+
+    def find_nfl_week_by_game_id(self, game_id: str, year: int) -> Optional[Dict]:
+        """
+        Find the NFL week information for a specific game ID.
+
+        Args:
+            game_id: The ESPN game ID
+            year: The NFL season year
+
+        Returns:
+            Dictionary with week info or None if not found
+        """
+        from clients.espn_client import ESPNClient
+
+        try:
+            # Pass request_id from logger context
+            request_id = getattr(self.logger, "_keys", {}).get("request_id")
+            espn_client = ESPNClient(request_id=request_id)
+            schedule_data = espn_client.get_nfl_schedule(year)
+
+            if not schedule_data or "events" not in schedule_data:
+                self.logger.warning(f"No schedule data found for year {year}")
+                return None
+
+            # Search through all events to find the one with matching game_id
+            for event in schedule_data["events"]:
+                if event.get("id") == game_id:
+                    # Extract week information from the event
+                    season = event.get("season", {})
+                    week_info = {
+                        "game_id": game_id,
+                        "week": season.get("week"),
+                        "season_type": season.get("type"),
+                        "year": season.get("year"),
+                        "event_date": event.get("date"),
+                        "name": event.get("name", ""),
+                    }
+
+                    self.logger.info(f"Found week info for game {game_id}: {week_info}")
+                    return week_info
+
+            self.logger.warning(f"Game ID {game_id} not found in {year} schedule")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error finding NFL week for game {game_id}: {e}")
+            return None
+
+    def get_week_boundary_by_game_id(self, game_id: str, year: int) -> Optional[tuple]:
+        """
+        Get the week start and end boundaries for a specific game.
+
+        Args:
+            game_id: The ESPN game ID
+            year: The NFL season year
+
+        Returns:
+            tuple: (week_start_epoch, week_end_epoch) or None if not found
+        """
+        week_info = self.find_nfl_week_by_game_id(game_id, year)
+
+        if not week_info:
+            return None
+
+        try:
+            week_num = week_info["week"]
+            season_type = week_info["season_type"]
+
+            if not week_num or not season_type:
+                self.logger.warning(
+                    f"Missing week or season_type info for game {game_id}"
+                )
+                return None
+
+            # Get the week dates
+            week_start_dt, week_end_dt = self.get_week_dates_for_season(
+                year, season_type, week_num
+            )
+
+            # Convert to epoch timestamps
+            week_start_epoch = int(week_start_dt.timestamp())
+            week_end_epoch = int(week_end_dt.timestamp())
+
+            self.logger.info(
+                f"Week boundary for game {game_id}: {week_start_epoch} to {week_end_epoch}"
+            )
+
+            return week_start_epoch, week_end_epoch
+
+        except Exception as e:
+            self.logger.error(
+                f"Error calculating week boundary for game {game_id}: {e}"
+            )
+            return None

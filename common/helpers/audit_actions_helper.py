@@ -20,7 +20,7 @@ class AuditActionHelper:
     Provides methods to create audit entries for user profiles and Strava profiles.
     """
 
-    def __init__(self, request_id: str = None):
+    def __init__(self, request_id: str):
         """
         Initializes the helper with a DynamoDB table.
         :param table: The DynamoDB table instance.
@@ -29,8 +29,7 @@ class AuditActionHelper:
         table_name = os.getenv("TABLE_NAME")
         self.table = self.dynamodb.Table(table_name)
         self.logger = Logger()
-        if request_id:
-            self.logger.append_keys(request_id=request_id)
+        self.logger.append_keys(request_id=request_id)
 
     def to_dict(self, obj):
         if obj is None:

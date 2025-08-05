@@ -18,13 +18,12 @@ class BetHelper:
     A class to interact with DynamoDB for bet operations in the FortunasBet application.
     """
 
-    def __init__(self, request_id: str = None):
+    def __init__(self, request_id: str):
         self.dynamodb = boto3.resource("dynamodb", region_name="us-west-2")
         table_name = os.getenv("TABLE_NAME")
         self.table = self.dynamodb.Table(table_name)
         self.logger = Logger()
-        if request_id:
-            self.logger.append_keys(request_id=request_id)
+        self.logger.append_keys(request_id=request_id)
 
     def _convert_floats_to_decimals(self, obj: Any) -> Any:
         """
@@ -62,18 +61,31 @@ class BetHelper:
         """
         Create a new bet in DynamoDB.
         PK: ROOM#{room_id}
-        SK: POINT#{points_wagered}#USER#{user_id}
+        SK: POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}
 
-        Validates that the bet doesn't already exist before creating.
+        Validates that the bet doesn't already exist and checks week boundary constraints.
         """
-        # Check if bet already exists
+        # First check if exact bet already exists (same event)
         existing_bet = self.get_bet(bet.room_id, bet.points_wagered, bet.user_id)
         if existing_bet:
             raise DuplicateBetException(bet.room_id, bet.user_id, bet.points_wagered)
 
+        # Then validate week boundary constraints
+        self.validate_week_boundary_bet(
+            room_id=bet.room_id,
+            user_id=bet.user_id,
+            points_wagered=bet.points_wagered,
+            sport=bet.sport,
+            league=bet.league,
+            event_datetime=bet.event_datetime,
+            game_id=bet.game_id,
+        )
+
         item = bet.dict()
         item["PK"] = f"ROOM#{bet.room_id}"
-        item["SK"] = f"POINT#{bet.points_wagered}#USER#{bet.user_id}"
+        item["SK"] = (
+            f"POINT#{bet.points_wagered}#USER#{bet.user_id}#EVENT#{bet.event_datetime}"
+        )
 
         # Convert float values to Decimal for DynamoDB compatibility
         item = self._convert_floats_to_decimals(item)
@@ -92,31 +104,55 @@ class BetHelper:
             raise
 
     def get_bet(
-        self, room_id: str, points_wagered: int, user_id: str
+        self,
+        room_id: str,
+        points_wagered: int,
+        user_id: str,
+        event_datetime: int = None,
     ) -> Optional[dict]:
         """
         Fetch a specific bet from DynamoDB.
+        If event_datetime is provided, looks for exact match. Otherwise, queries for any bet with those points for that user.
         """
         try:
-            response = self.table.get_item(
-                Key={
-                    "PK": f"ROOM#{room_id}",
-                    "SK": f"POINT#{points_wagered}#USER#{user_id}",
-                }
-            )
-            item = response.get("Item")
-            if item:
-                # Convert Decimal values back to float for JSON serialization
-                serializable_item = self._convert_decimals_to_floats(item)
-                self.logger.info(
-                    f"Retrieved {points_wagered}-point bet for user {user_id} in room {room_id}"
+            if event_datetime:
+                # Look for exact bet with specific event_datetime
+                response = self.table.get_item(
+                    Key={
+                        "PK": f"ROOM#{room_id}",
+                        "SK": f"POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}",
+                    }
                 )
-                return serializable_item
+                item = response.get("Item")
+                if item:
+                    # Convert Decimal values back to float for JSON serialization
+                    serializable_item = self._convert_decimals_to_floats(item)
+                    self.logger.info(
+                        f"Retrieved {points_wagered}-point bet for user {user_id} in room {room_id} for event {event_datetime}"
+                    )
+                    return serializable_item
             else:
-                self.logger.info(
-                    f"No {points_wagered}-point bet found for user {user_id} in room {room_id}"
+                # Query for any bet with those points for that user
+                response = self.table.query(
+                    KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                    ExpressionAttributeValues={
+                        ":pk": f"ROOM#{room_id}",
+                        ":sk_prefix": f"POINT#{points_wagered}#USER#{user_id}",
+                    },
                 )
-                return None
+                items = response.get("Items", [])
+                if items:
+                    # Return the first match (most recent)
+                    serializable_item = self._convert_decimals_to_floats(items[0])
+                    self.logger.info(
+                        f"Retrieved {points_wagered}-point bet for user {user_id} in room {room_id}"
+                    )
+                    return serializable_item
+
+            self.logger.info(
+                f"No {points_wagered}-point bet found for user {user_id} in room {room_id}"
+            )
+            return None
         except ClientError as e:
             self.logger.error(
                 f"Error fetching bet for user {user_id} in room {room_id}: {e}"
@@ -297,6 +333,90 @@ class BetHelper:
                 f"Error deleting bet for user {user_id} in room {room_id}: {e}"
             )
             raise
+
+    def validate_week_boundary_bet(
+        self,
+        room_id: str,
+        user_id: str,
+        points_wagered: int,
+        sport: str,
+        league: str,
+        event_datetime: int,
+        game_id: str,
+    ) -> bool:
+        """
+        Check if a user already has a bet with the same points within the same week boundary.
+
+        Args:
+            room_id: The room ID
+            user_id: The user ID
+            points_wagered: Points being wagered (1, 2, or 3)
+            sport: The sport (e.g., 'football')
+            league: The league (e.g., 'nfl')
+            event_datetime: Event timestamp in epoch seconds
+            game_id: The game ID
+
+        Returns:
+            bool: True if bet is valid (no duplicate), False if duplicate exists
+
+        Raises:
+            DuplicateBetException: If a duplicate bet exists in the same week
+        """
+        from common.helpers.week_helper import WeekHelper
+
+        try:
+            # Get week boundaries for this sport/league
+            # Pass request_id from self.logger context
+            request_id = getattr(self.logger, "_keys", {}).get("request_id")
+            week_helper = WeekHelper(request_id=request_id)
+            week_boundary = week_helper.get_week_boundary(
+                sport, league, event_datetime, game_id
+            )
+
+            if not week_boundary:
+                self.logger.warning(
+                    f"Could not determine week boundary for {sport}/{league}, allowing bet"
+                )
+                return True
+
+            week_start_epoch, week_end_epoch = week_boundary
+
+            # Query for existing bets with same points in this week
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk",
+                FilterExpression="contains(SK, :point_user) AND #event_dt BETWEEN :week_start AND :week_end",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":point_user": f"POINT#{points_wagered}#USER#{user_id}",
+                    ":week_start": week_start_epoch,
+                    ":week_end": week_end_epoch,
+                },
+                ExpressionAttributeNames={"#event_dt": "event_datetime"},
+            )
+
+            existing_bets = response.get("Items", [])
+
+            if existing_bets:
+                self.logger.warning(
+                    f"User {user_id} already has a {points_wagered}-point bet in this week "
+                    f"(week boundary: {week_start_epoch} to {week_end_epoch})"
+                )
+                raise DuplicateBetException(
+                    f"You already have a {points_wagered}-point bet placed this week"
+                )
+
+            self.logger.info(
+                f"Bet validation passed for user {user_id}, {points_wagered} points in week "
+                f"{week_start_epoch} to {week_end_epoch}"
+            )
+            return True
+
+        except DuplicateBetException:
+            raise
+        except Exception as e:
+            self.logger.error(f"Error validating week boundary bet: {e}")
+            # In case of error, allow the bet to proceed
+            return True
 
     def get_user_bets_for_room(self, room_id: str, user_id: str) -> List[dict]:
         """

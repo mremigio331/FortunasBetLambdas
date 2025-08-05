@@ -52,12 +52,14 @@ class BetModel(BaseModel):
     """Single point-value bet submission for a user in a room."""
 
     # pk: ROOM#{room_id}
-    # sk: POINT#{points_wagered}#USER#{user_id}
+    # sk: POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}
 
     # Week/Room info
     room_id: str
     season_type: int  # 1=preseason, 2=regular, 3=postseason
-    event_datetime: int  # Epoch timestamp of the event/game week
+    event_datetime: (
+        int  # Epoch timestamp of the event/game week (used in SK for uniqueness)
+    )
     game_id: str  # Identifier for the specific game/week
     sport: str  # Sport (e.g., 'football', 'basketball')
     league: str  # League (e.g., 'nfl', 'nba')

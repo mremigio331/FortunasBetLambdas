@@ -43,7 +43,7 @@ def get_nfl_odds(
 
     try:
         espn_client = ESPNClient(request_id=request.state.request_id)
-        odds_data = espn_client.get_nfl_week_ods(
+        odds_data = espn_client.get_nfl_week_odds(
             week=week, year=year, season_type=season_type
         )
 

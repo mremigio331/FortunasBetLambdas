@@ -12,13 +12,12 @@ class UserProfileHelper:
     A class to interact with DynamoDB for the FortunasBet application.
     """
 
-    def __init__(self, request_id: str = None):
+    def __init__(self, request_id: str):
         self.dynamodb = boto3.resource("dynamodb", region_name="us-west-2")
         table_name = os.getenv("TABLE_NAME")
         self.table = self.dynamodb.Table(table_name)
         self.logger = Logger()
-        if request_id:
-            self.logger.append_keys(request_id=request_id)
+        self.logger.append_keys(request_id=request_id)
         self.sk = "USER_PROFILE"
         self.audit_sk = "USER_PROFILE_AUDIT"
         self.audit_action_helper = AuditActionHelper(request_id=request_id)

@@ -34,7 +34,7 @@ class ESPNClient:
             service=API_SERVICE,
         )
 
-    def get_nfl_week_ods(self, week: int, year: int, season_type: int = 2):
+    def get_nfl_week_odds(self, week: int, year: int, season_type: int = 2):
         """
         Returns over/under lines for all NFL games in the given week/year.
         """
@@ -199,6 +199,40 @@ class ESPNClient:
                 f"Fetching NFL scoreboard from: {url} with params: {params}"
             )
             response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return data
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Request failed: {e}")
+            return {}
+
+    def get_nfl_schedule(self, year: int):
+        """
+        Returns the complete NFL schedule for a given year.
+        This includes all games with their dates and week assignments.
+
+        Args:
+            year: The NFL season year
+
+        Returns:
+            dict: Complete NFL schedule data
+        """
+        self.metrics.add_dimension(
+            name=ENDPOINT, value="/sports/football/nfl/scoreboard"
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value="NFL")
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={year}"
+            self.logger.info(f"Fetching NFL schedule from: {url}")
+            response = requests.get(url, timeout=15)
             response.raise_for_status()
             data = response.json()
 
