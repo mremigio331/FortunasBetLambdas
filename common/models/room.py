@@ -26,6 +26,7 @@ class RoomModel(BaseModel):
     )  # List of admin user IDs, defaults to empty but will be populated with owner
     start_date: int  # Epoch timestamp - when room/season starts
     end_date: int  # Epoch timestamp - when room/season ends
+    archived: Optional[bool] = False  # Room archive status, default False, can be None
 
     @validator("leagues")
     def validate_leagues(cls, v):

@@ -129,6 +129,7 @@ class RoomHelper:
                     "admins": item.get("admins", []),
                     "start_date": item.get("start_date"),
                     "end_date": item.get("end_date"),
+                    "archived": item.get("archived", False),
                 }
                 return result
             else:
@@ -149,6 +150,7 @@ class RoomHelper:
         public: Optional[bool] = None,
         start_date: Optional[int] = None,
         end_date: Optional[int] = None,
+        archived: Optional[bool] = None,
     ) -> dict:
         """
         Update room fields. Only room admins can update rooms.
@@ -200,6 +202,10 @@ class RoomHelper:
             if end_date is not None:
                 update_expr_parts.append("end_date = :end_date")
                 expr_attr_values[":end_date"] = end_date
+
+            if archived is not None:
+                update_expr_parts.append("archived = :archived")
+                expr_attr_values[":archived"] = archived
 
             # Always update modified timestamp
             update_expr_parts.append("modified_at = :modified_at")

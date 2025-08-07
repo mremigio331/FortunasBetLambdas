@@ -8,6 +8,7 @@ from datetime import datetime
 
 from api.decorators.exceptions_decorator import exceptions_decorator
 from common.helpers.bet_helper import BetHelper
+from common.helpers.membership_helper import MembershipHelper
 from common.models.bet import BetModel, GameBet
 from clients.espn_client import ESPNClient
 from exceptions.bet_exceptions import (
@@ -20,6 +21,7 @@ from exceptions.bet_exceptions import (
     GameDataNotFoundException,
 )
 from common.constants.services import API_SERVICE
+
 
 logger = Logger(service=API_SERVICE)
 router = APIRouter()
@@ -117,6 +119,26 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
         logger.warning("User ID not found in request state.")
         return JSONResponse(
             status_code=401, content={"error": "User authentication required"}
+        )
+
+    # Check if user is a member of the room
+    membership_helper = MembershipHelper(request_id=request.state.request_id)
+    room_membership = membership_helper.get_membership(
+        room_id=bet_request.room_id, user_id=user_id
+    )
+    if room_membership is None:
+        logger.warning(f"User {user_id} is not a member of room {bet_request.room_id}")
+        return JSONResponse(
+            status_code=403,
+            content={"error": "User is not a member of the room"},
+        )
+    if room_membership.get("status") != "active":
+        logger.warning(
+            f"User {user_id} has inactive membership in room {bet_request.room_id}"
+        )
+        return JSONResponse(
+            status_code=403,
+            content={"error": "User membership is not active"},
         )
 
     # Initialize ESPN client to validate game status

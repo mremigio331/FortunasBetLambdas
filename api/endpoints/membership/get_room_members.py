@@ -65,10 +65,6 @@ def get_room_members(request: Request, room_id: str):
 
         # Check both possible field names for backward compatibility
         admin_ids = room.get("admin_user_ids", []) or room.get("admins", [])
-        if user_id not in admin_ids:
-            raise HTTPException(
-                status_code=403, detail="Only room admins can access member information"
-            )
 
         # Get all membership records for the room (all statuses and types)
         all_memberships = []

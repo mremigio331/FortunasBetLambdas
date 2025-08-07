@@ -35,6 +35,9 @@ class EditRoomRequest(BaseModel):
     end_date: Optional[int] = Field(
         None, description="End date of the room/season as epoch timestamp"
     )
+    archived: Optional[bool] = Field(
+        None, description="Whether the room is archived (default False)"
+    )
 
 
 @router.put("/edit_room", response_model=dict)
@@ -78,6 +81,7 @@ def edit_room(request: Request, room_data: EditRoomRequest):
             public=room_data.public,
             start_date=room_data.start_date,
             end_date=room_data.end_date,
+            archived=room_data.archived,
         )
 
         room_dict = jsonable_encoder(updated_room)
