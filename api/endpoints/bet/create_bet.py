@@ -132,13 +132,15 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
             status_code=403,
             content={"error": "User is not a member of the room"},
         )
-    if room_membership.get("status") != "active":
+
+    print(room_membership)
+    if room_membership.get("status") != "approved":
         logger.warning(
             f"User {user_id} has inactive membership in room {bet_request.room_id}"
         )
         return JSONResponse(
             status_code=403,
-            content={"error": "User membership is not active"},
+            content={"error": "User membership is not approved"},
         )
 
     # Initialize ESPN client to validate game status
