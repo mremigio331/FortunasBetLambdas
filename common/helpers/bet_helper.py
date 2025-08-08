@@ -525,6 +525,7 @@ class BetHelper:
 
             # Grade the bet based on type
             bet_type = bet_data["game_bet"]["bet_type"]
+
             self.logger.info(f"Grading {bet_type} bet")
             points_earned = None
 
@@ -572,8 +573,18 @@ class BetHelper:
         """
         try:
             game_bet = bet_data["game_bet"]
+            self.logger.info(f"Grading spread bet for game_bet: {game_bet}")
             selected_team = game_bet["team_choice"]  # This should be "home" or "away"
-            spread_value = float(game_bet["spread_value"])
+            if game_bet.get("spread_value") is not None:
+                spread_value = float(game_bet["spread_value"])
+                self.logger.info(
+                    f"Using spread_value from game_bet['spread_value']: {spread_value}"
+                )
+            else:
+                spread_value = float(bet_data["odds_snapshot"]["spread"])
+                self.logger.info(
+                    f"Using spread_value from odds_snapshot['spread']: {spread_value}"
+                )
             points_wagered = bet_data["points_wagered"]
 
             self.logger.info(
