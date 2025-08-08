@@ -24,6 +24,7 @@ class BetHelper:
         table_name = os.getenv("TABLE_NAME")
         self.table = self.dynamodb.Table(table_name)
         self.logger = Logger()
+        self.request_id = request_id
         self.logger.append_keys(request_id=request_id)
 
     def _convert_floats_to_decimals(self, obj: Any) -> Any:
@@ -456,8 +457,7 @@ class BetHelper:
 
         try:
             # Get current game status from ESPN
-            request_id = getattr(self.logger, "_keys", {}).get("request_id")
-            espn_client = ESPNClient(request_id=request_id)
+            espn_client = ESPNClient(request_id=self.request_id)
 
             sport = bet_data["sport"]
             league = bet_data["league"]
@@ -483,9 +483,29 @@ class BetHelper:
             game_detail = status_data.get("detail", "")
             completed = status_data.get("completed", False)
 
+            # Update odds_snapshot or current_status in bet_data
+            if "odds_snapshot" in bet_data and isinstance(
+                bet_data["odds_snapshot"], dict
+            ):
+                bet_data["odds_snapshot"]["status"] = status_data
+            else:
+                bet_data["current_status"] = game_data
+
+            # Persist the updated status to DynamoDB
+            pk = bet_data.get("PK")
+            sk = bet_data.get("SK")
+            if pk and sk:
+                item = self._convert_floats_to_decimals(bet_data)
+                self.table.put_item(Item=item)
+                self.logger.info(
+                    f"Updated odds_snapshot/status in DynamoDB for PK: {pk}, SK: {sk}"
+                )
+
             self.logger.info(
                 f"Game status details - name: '{game_status}', state: '{game_state}', detail: '{game_detail}', completed: {completed}"
             )
+
+            self.logger.info(f"Bet data before grading: {bet_data}")
 
             # Check if game is completed - use multiple conditions for reliability
             is_final = (
@@ -499,7 +519,7 @@ class BetHelper:
                 self.logger.info(
                     f"Game not yet final - status: '{game_status}', state: '{game_state}', detail: '{game_detail}', completed: {completed} - skipping grading"
                 )
-                return None
+                return bet_data
 
             self.logger.info(f"Game is final - proceeding with bet grading")
 
