@@ -229,10 +229,10 @@ class BetHelper:
         """
         try:
             response = self.table.query(
-                KeyConditionExpression="PK = :pk AND contains(SK, :user_id)",
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
                 ExpressionAttributeValues={
                     ":pk": f"ROOM#{room_id}",
-                    ":user_id": f"USER#{user_id}",
+                    ":sk_prefix": "POINT#",
                 },
             )
             items = response.get("Items", [])
@@ -242,9 +242,15 @@ class BetHelper:
                 self._convert_decimals_to_floats(item) for item in items
             ]
 
+            # Filter for user_id in SK
+            user_id_str = f"USER#{user_id}"
+            filtered_items = [
+                item for item in serializable_items if user_id_str in item.get("SK", "")
+            ]
+
             # Check and grade each bet if needed
             graded_items = []
-            for item in serializable_items:
+            for item in filtered_items:
                 graded_bet = self.check_and_grade_bet(item)
                 if graded_bet:
                     enhanced_bet = self._enhance_bet_with_game_data(graded_bet)

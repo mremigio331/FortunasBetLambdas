@@ -2,6 +2,9 @@ from aws_lambda_powertools import Logger
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from common.helpers.nfl_helper import NFLHelper
+from clients.espn_client import ESPNClient
+from datetime import datetime, timezone
+from dateutil.parser import isoparse
 
 
 class WeekHelper:
@@ -12,6 +15,7 @@ class WeekHelper:
     def __init__(self, request_id: str):
         self.logger = Logger()
         self.logger.append_keys(request_id=request_id)
+        self.request_id = request_id
 
     def get_week_boundary(
         self, sport: str, league: str, event_datetime: int, game_id: str = None
@@ -145,3 +149,34 @@ class WeekHelper:
             self.logger.error(f"Error calculating calendar week boundary: {e}")
             # Fallback: use event_datetime as both start and end
             return event_datetime, event_datetime
+
+    def get_nfl_current_week(self):
+        espn_client = ESPNClient(request_id=self.request_id)
+
+        now = datetime.now(timezone.utc)
+        full_schedule = espn_client.get_nfl_schedule(now.year)
+        schedule = full_schedule["leagues"][0]["calendar"]
+
+        current_week_info = {
+            "season_type_label": None,
+            "season_type_value": None,
+            "week_label": None,
+            "week_value": None,
+            "week_start": None,
+            "week_end": None,
+        }
+
+        for season in schedule:
+            for week in season.get("entries", []):
+                start = isoparse(week["startDate"])
+                end = isoparse(week["endDate"])
+                if start <= now <= end:
+                    current_week_info = {
+                        "season_type_label": season["label"],
+                        "season_type_value": season["value"],
+                        "week_label": week["label"],
+                        "week_value": week["value"],
+                        "week_start": week["startDate"],
+                        "week_end": week["endDate"],
+                    }
+        return current_week_info
