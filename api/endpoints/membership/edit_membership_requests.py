@@ -11,6 +11,8 @@ from common.helpers.membership_helper import MembershipHelper
 from common.helpers.room_helper import RoomHelper
 from common.models.membership import MembershipStatus
 from common.constants.services import API_SERVICE
+from common.helpers.notification_helper import NotificationType, NotificationHelper
+from common.helpers.user_profile_helper import UserProfileHelper
 
 logger = Logger(service=API_SERVICE)
 router = APIRouter()
@@ -38,6 +40,13 @@ def edit_membership_request(request: Request, edit_request: EditMembershipReques
 
     admin_user_id = request.state.user_id
     logger.info(f"admin_user_id from JWT: {admin_user_id}")
+    user_profile_helper = UserProfileHelper(request_id=request.state.request_id)
+    membership_request_user = user_profile_helper.get_user_profile(
+        user_id=edit_request.target_user_id
+    )["name"]
+    membership_approval_user = user_profile_helper.get_user_profile(
+        user_id=admin_user_id
+    )["name"]
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)
@@ -57,18 +66,48 @@ def edit_membership_request(request: Request, edit_request: EditMembershipReques
             f"Admin {admin_user_id} {action} membership request for user {edit_request.target_user_id} in room {edit_request.room_id}"
         )
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": f"Membership request {action} successfully",
-                "membership_request": membership_dict,
-                "action": action,
-                "admin_id": admin_user_id,
-            },
-        )
-
     except Exception as e:
         logger.error(
             f"Error editing membership request for user {edit_request.target_user_id} in room {edit_request.room_id}: {e}"
         )
-        raise
+        raise e
+
+    try:
+        room = room_helper.get_room(room_id=edit_request.room_id)
+        logger.info(f"Room details: {room}")
+        room_admins = room.get("admins", [])
+
+        for admin in room_admins:
+            notification_helper = NotificationHelper(
+                request_id=request.state.request_id
+            )
+            notification_helper.create_notification(
+                user_id=admin,
+                message=f"Admin {membership_approval_user} has {action} the membership request for user {membership_request_user} in room: {room['room_name']}",
+                notification_type=NotificationType.MEMBERSHIP_REQUEST,
+            )
+    except Exception as e:
+        logger.error(f"Error creating notification for room admins: {e}")
+
+    try:
+        # Notify the user whose membership request was edited
+        notification_helper = NotificationHelper(request_id=request.state.request_id)
+        notification_helper.create_notification(
+            user_id=edit_request.target_user_id,
+            message=f"Your membership request in room {room['room_name']} has been {action} by admin {membership_approval_user}.",
+            notification_type=NotificationType.MEMBERSHIP_REQUEST,
+        )
+    except Exception as e:
+        logger.error(
+            f"Error creating notification for user {edit_request.target_user_id}: {e}"
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message": f"Membership request {action} successfully",
+            "membership_request": membership_dict,
+            "action": action,
+            "admin_id": admin_user_id,
+        },
+    )

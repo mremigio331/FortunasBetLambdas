@@ -1,5 +1,15 @@
 from pydantic import BaseModel, validator
 from typing import Optional
+from enum import Enum
+
+
+class NotificationType(Enum):
+    BET_WINNER = "Bet Winner"
+    BET_LOSER = "Bet Loser"
+    BET_PUSH = "Bet Push"
+    MEMBERSHIP_REQUEST = "Membership Request"
+    MEMBERSHIP_APPROVED = "Membership Approved"
+    MEMBERSHIP_INVITE = "Membership Invite"
 
 
 class NotificationModel(BaseModel):
@@ -8,6 +18,7 @@ class NotificationModel(BaseModel):
     # sk: NOTIFICATION#{notification_id}
     view: bool = False
     message: str
+    notification_type: NotificationType
     timestamp: int  # Epoch timestamp
 
     @validator("message")

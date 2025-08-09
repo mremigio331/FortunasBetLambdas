@@ -23,7 +23,16 @@ from api.endpoints.bet import (
     get_user_bets_for_current_week,
 )
 from api.endpoints.odds import get_nfl_odds, get_nfl_weeks_in_range
-from common.constants.tags import BET, HOME, USER_PROFILE, ROOM, MEMBERSHIP, ODDS
+from common.constants.tags import (
+    BET,
+    HOME,
+    USER_PROFILE,
+    ROOM,
+    MEMBERSHIP,
+    ODDS,
+    NOTIFICATION,
+)
+from api.endpoints.notifications import get_notifications, acknowledge_notification
 from fastapi import FastAPI
 
 
@@ -77,5 +86,12 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(get_bets_for_room.router, prefix="/bet", tags=[BET])
     app.include_router(get_current_nfl_week.router, prefix="/bet", tags=[BET])
     app.include_router(get_user_bets_for_current_week.router, prefix="/bet", tags=[BET])
+
+    app.include_router(
+        get_notifications.router, prefix="/notifications", tags=[NOTIFICATION]
+    )
+    app.include_router(
+        acknowledge_notification.router, prefix="/notifications", tags=[NOTIFICATION]
+    )
 
     return app

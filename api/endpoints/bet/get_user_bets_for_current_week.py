@@ -34,10 +34,20 @@ def get_user_bets_for_current_week(
     - user_id: The user ID to retrieve bets for
     """
     logger.append_keys(request_id=request.state.request_id)
-    user_id = request.state.user_id
+    user_id = getattr(request.state, "user_token", None)
 
     membership_helper = MembershipHelper(request_id=request.state.request_id)
     rooms = membership_helper.get_all_membership_requests_for_user(user_id=user_id)
+
+    if not rooms:
+        logger.info(f"No active rooms found for user {user_id}.")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "No active rooms found for the user.",
+                "bets": {},
+            },
+        )
 
     week_helper = WeekHelper(request_id=request.state.request_id)
     current_week_info = week_helper.get_nfl_current_week()
@@ -56,8 +66,6 @@ def get_user_bets_for_current_week(
         if current_week_info["week_end"]
         else None
     )
-
-    logger.info(f"Active rooms: {active_rooms[0]}")
 
     for room in active_rooms:
         # PK is in the format 'ROOM#<id>'
