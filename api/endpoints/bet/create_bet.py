@@ -1,3 +1,4 @@
+from exceptions.bet_exceptions import OddsSnapshotMismatch
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -133,7 +134,6 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
             content={"error": "User is not a member of the room"},
         )
 
-    print(room_membership)
     if room_membership.get("status") != "approved":
         logger.warning(
             f"User {user_id} has inactive membership in room {bet_request.room_id}"
@@ -164,6 +164,13 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
     allowed_statuses = ["STATUS_SCHEDULED", "SCHEDULED", "PRE"]
     if current_status not in allowed_statuses:
         raise InvalidGameStatusException(current_status, "STATUS_SCHEDULED")
+
+    # Validate odds using BetHelper
+    bet_helper = BetHelper(request_id=request.state.request_id)
+    if not bet_helper.validate_odds_snapshot(bet_request.odds_snapshot, event_data):
+        raise OddsSnapshotMismatch(
+            "Home/Away team odds do not match between request and event data."
+        )
 
     # Create GameBet object
     game_bet = GameBet(

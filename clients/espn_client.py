@@ -256,7 +256,7 @@ class ESPNClient:
             event_id: The ESPN event ID
 
         Returns:
-            dict: Event data including status information
+            dict: Event data including status information and pickcenter odds
         """
         self.metrics.add_dimension(
             name=ENDPOINT, value=f"/sports/{sport}/{league}/summary"
@@ -277,6 +277,10 @@ class ESPNClient:
 
             # Extract relevant event information
             event_data = {}
+
+            # Extract pickcenter odds if present
+            pickcenter = data.get("pickcenter", [])
+            event_data["pickcenter"] = pickcenter
 
             # Check different possible structures in the ESPN response
             if "header" in data:
@@ -314,21 +318,23 @@ class ESPNClient:
 
                     self.logger.info(f"Extracted {len(teams_data)} teams with scores")
 
-                    event_data = {
-                        "id": competition.get("id"),
-                        "date": competition.get("date"),
-                        "status": {
-                            "name": status_type.get("name", ""),
-                            "state": status_type.get("state", ""),
-                            "completed": status_type.get("completed", False),
-                            "detail": status_type.get("detail", ""),
-                            "shortDetail": status_type.get("shortDetail", ""),
-                            "home_score": teams_data[0]["score"],
-                            "away_score": teams_data[1]["score"],
-                        },
-                        "startDate": competition.get("startDate"),
-                        "competitors": teams_data,
-                    }
+                    event_data.update(
+                        {
+                            "id": competition.get("id"),
+                            "date": competition.get("date"),
+                            "status": {
+                                "name": status_type.get("name", ""),
+                                "state": status_type.get("state", ""),
+                                "completed": status_type.get("completed", False),
+                                "detail": status_type.get("detail", ""),
+                                "shortDetail": status_type.get("shortDetail", ""),
+                                "home_score": teams_data[0]["score"],
+                                "away_score": teams_data[1]["score"],
+                            },
+                            "startDate": competition.get("startDate"),
+                            "competitors": teams_data,
+                        }
+                    )
 
                 elif "competition" in header:
                     # Alternative structure
@@ -361,21 +367,23 @@ class ESPNClient:
 
                     self.logger.info(f"Extracted {len(teams_data)} teams with scores")
 
-                    event_data = {
-                        "id": competition.get("id"),
-                        "date": competition.get("date"),
-                        "status": {
-                            "name": status_type.get("name", ""),
-                            "state": status_type.get("state", ""),
-                            "completed": status_type.get("completed", False),
-                            "detail": status_type.get("detail", ""),
-                            "shortDetail": status_type.get("shortDetail", ""),
-                            "home_score": teams_data[0]["score"],
-                            "away_score": teams_data[1]["score"],
-                        },
-                        "startDate": competition.get("startDate"),
-                        "competitors": teams_data,
-                    }
+                    event_data.update(
+                        {
+                            "id": competition.get("id"),
+                            "date": competition.get("date"),
+                            "status": {
+                                "name": status_type.get("name", ""),
+                                "state": status_type.get("state", ""),
+                                "completed": status_type.get("completed", False),
+                                "detail": status_type.get("detail", ""),
+                                "shortDetail": status_type.get("shortDetail", ""),
+                                "home_score": teams_data[0]["score"],
+                                "away_score": teams_data[1]["score"],
+                            },
+                            "startDate": competition.get("startDate"),
+                            "competitors": teams_data,
+                        }
+                    )
                 else:
                     self.logger.warning(
                         f"No competition data found in header. Available keys: {list(header.keys())}"

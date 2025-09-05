@@ -1,3 +1,10 @@
+# OddsSnapshotMismatch exception for invalid odds
+class OddsSnapshotMismatch(Exception):
+    """Raised when event_data odds_snapshot does not match the passed odds_snapshot."""
+
+    pass
+
+
 class BetException(Exception):
     """Base exception for bet-related errors."""
 

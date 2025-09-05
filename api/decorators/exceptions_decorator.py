@@ -29,6 +29,7 @@ from exceptions.bet_exceptions import (
     UserProfileNotFoundException,
     GameDataNotFoundException,
 )
+from exceptions.bet_exceptions import OddsSnapshotMismatch
 from fastapi.responses import JSONResponse
 from botocore.exceptions import ClientError
 
@@ -72,6 +73,7 @@ def exceptions_decorator(func):
             InvalidBetTypeException,
             BetLockedException,
             GameDataNotFoundException,
+            OddsSnapshotMismatch,
         ) as exc:
             return JSONResponse(
                 content={"message": str(exc) or "Invalid request data."},

@@ -823,3 +823,57 @@ class BetHelper:
                 f"Error updating bet result in database: {str(e)}", exc_info=True
             )
             raise
+
+    def validate_odds_snapshot(self, odds_snapshot: dict, event_data: dict) -> bool:
+        """
+        Validate that the home/away team odds in odds_snapshot match those in event_data.
+        Returns True if they match, False otherwise. Adds detailed logging for debugging.
+        """
+        self.logger.info(
+            f"Validating odds snapshot: odds_snapshot={odds_snapshot}, event_data keys={list(event_data.keys())}"
+        )
+        home_odds_req = odds_snapshot.get("homeTeamOdds", {})
+        away_odds_req = odds_snapshot.get("awayTeamOdds", {})
+
+        pickcenter = event_data.get("pickcenter", [])
+        print(event_data)
+        self.logger.info(f"Event pickcenter: {pickcenter}")
+        espn_bet = next(
+            (p for p in pickcenter if p.get("provider", {}).get("name") == "ESPN BET"),
+            None,
+        )
+        if not espn_bet:
+            self.logger.warning("No ESPN BET provider found in event_data pickcenter.")
+            return False
+
+        home_odds_event = espn_bet.get("homeTeamOdds", {})
+        away_odds_event = espn_bet.get("awayTeamOdds", {})
+        spread_event = espn_bet.get("spread")
+        over_under_event = espn_bet.get("overUnder")
+
+        spread_req = odds_snapshot.get("spread")
+        over_under_req = odds_snapshot.get("overUnder")
+
+        self.logger.info(
+            f"Comparing home odds: request={home_odds_req}, event={home_odds_event}"
+        )
+        self.logger.info(
+            f"Comparing away odds: request={away_odds_req}, event={away_odds_event}"
+        )
+        self.logger.info(
+            f"Comparing spread: request={spread_req}, event={spread_event}"
+        )
+        self.logger.info(
+            f"Comparing overUnder: request={over_under_req}, event={over_under_event}"
+        )
+
+        match = (
+            home_odds_req.get("moneyLine") == home_odds_event.get("moneyLine")
+            and home_odds_req.get("spreadOdds") == home_odds_event.get("spreadOdds")
+            and away_odds_req.get("moneyLine") == away_odds_event.get("moneyLine")
+            and away_odds_req.get("spreadOdds") == away_odds_event.get("spreadOdds")
+            and spread_req == spread_event
+            and over_under_req == over_under_event
+        )
+        self.logger.info(f"Odds snapshot match result: {match}")
+        return match
