@@ -27,6 +27,7 @@ class UpdateUserProfileRequest(BaseModel):
         None,
         description="The user's avatar color (black, white, red, blue, green, yellow, orange, purple, pink, brown, gray, cyan)",
     )
+    dark_mode: Optional[bool] = Field(None, description="User's dark mode preference")
 
 
 @router.put("/profile", response_model=UpdateUserProfileRequest)
@@ -50,6 +51,7 @@ def update_user_profile(request: Request, user_profile: UpdateUserProfileRequest
             name=user_profile.name,
             email=user_profile.email,
             color=user_profile.color,
+            dark_mode=user_profile.dark_mode,
         )
         if updated_profile:
             try:

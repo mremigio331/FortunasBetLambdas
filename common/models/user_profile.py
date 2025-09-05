@@ -11,6 +11,7 @@ class UserProfileModel(BaseModel):
     name: str
     created_at: int  # Epoch timestamp
     color: str = "black"  # Default color for user profile avatar
+    dark_mode: bool = False  # Default dark mode preference
 
     @validator("color")
     def validate_color(cls, v):

@@ -36,11 +36,16 @@ def handler(event: dict, context: LambdaContext) -> dict:
             topic_arn = os.environ.get("USER_ADDED_TOPIC_ARN")
             if topic_arn:
                 sns = boto3.client("sns")
-                sns.publish(
+                response = sns.publish(
                     TopicArn=topic_arn,
                     Subject="New FortunasBet User Signup",
                     Message=f"New user signed up:\nID: {user_id}\nEmail: {email}\nName: {name}",
                 )
+                logger.info(
+                    f"Published user signup to SNS topic: {topic_arn} with response: {response}"
+                )
+            else:
+                logger.warning("USER_ADDED_TOPIC_ARN not set, skipping SNS publish.")
         except Exception as e:
             logger.error(f"Failed to publish to SNS topic: {e}")
 

@@ -105,9 +105,10 @@ class UserProfileHelper:
         name: str = None,
         email: str = None,
         color: str = None,
+        dark_mode: bool = None,
     ):
         """
-        Update only the provided fields (name, email, color) of the user profile.
+        Update only the provided fields (name, email, color, dark_mode) of the user profile.
         Only fields that are not None will be updated.
         """
         # Use locals() to build updated_changes dict
