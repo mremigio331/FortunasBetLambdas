@@ -36,7 +36,7 @@ class ESPNClient:
 
     def get_nfl_week_odds(self, week: int, year: int, season_type: int = 2):
         """
-        Returns over/under lines for all NFL games in the given week/year.
+        Returns Total lines for all NFL games in the given week/year.
         """
         self.metrics.add_dimension(
             name=ENDPOINT, value="/sports/football/nfl/scoreboard"
@@ -138,7 +138,7 @@ class ESPNClient:
                             else:
                                 game_data["favoredTeam"] = "even"  # Pick 'em game
 
-                        # Keep over/under for reference
+                        # Keep Total for reference
                         game_data["overUnder"] = odds_data.get("overUnder")
 
                         # Extract home and away team odds

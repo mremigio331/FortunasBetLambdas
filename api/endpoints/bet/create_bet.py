@@ -41,7 +41,7 @@ class CreateGameBetRequest(BaseModel):
         None, description="The spread value at time of bet"
     )
 
-    # For over/under bets
+    # For Total bets
     over_under_choice: Optional[Literal["over", "under"]] = Field(
         None, description="Over or under choice"
     )

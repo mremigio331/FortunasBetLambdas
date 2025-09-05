@@ -28,7 +28,7 @@ def get_nfl_odds(
     """
     Get comprehensive NFL odds data for a specific week and year.
 
-    Returns odds information including spreads, money lines, over/under lines,
+    Returns odds information including spreads, money lines, Total lines,
     and other betting data for all games in the specified week.
 
     Parameters:

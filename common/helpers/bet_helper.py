@@ -685,7 +685,7 @@ class BetHelper:
 
     def _grade_over_under_bet(self, bet_data: dict, game_data: dict) -> Optional[float]:
         """
-        Grade an over/under bet based on game results.
+        Grade an Total bet based on game results.
 
         Args:
             bet_data: The bet dictionary
@@ -703,7 +703,7 @@ class BetHelper:
             points_wagered = bet_data["points_wagered"]
 
             self.logger.info(
-                f"Grading over/under bet: choice={over_under_choice}, line={total_line}, points_wagered={points_wagered}"
+                f"Grading Total bet: choice={over_under_choice}, line={total_line}, points_wagered={points_wagered}"
             )
 
             # Get team scores from game data
@@ -747,7 +747,7 @@ class BetHelper:
             points_earned = points_wagered if user_wins else 0
 
             self.logger.info(
-                f"Over/Under bet graded: {over_under_choice.upper()} {total_line}, "
+                f"Total bet graded: {over_under_choice.upper()} {total_line}, "
                 f"Total score: {total_score}, "
                 f"Result: {'WIN' if user_wins else 'LOSS'} ({points_earned} points)"
             )
@@ -755,7 +755,7 @@ class BetHelper:
             return points_earned
 
         except Exception as e:
-            self.logger.error(f"Error grading over/under bet: {e}")
+            self.logger.error(f"Error grading Total bet: {e}")
             return None
 
     def _update_bet_result(self, bet_data: dict, points_earned: float) -> dict:

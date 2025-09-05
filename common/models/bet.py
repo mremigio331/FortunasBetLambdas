@@ -16,7 +16,7 @@ class GameBet(BaseModel):
     )
     spread_value: Optional[float] = None  # The spread at time of bet
 
-    # For over/under bets
+    # For Total bets
     over_under_choice: Optional[Literal["over", "under"]] = (
         None  # Over or under the total
     )
@@ -44,7 +44,7 @@ class GameBet(BaseModel):
     @validator("over_under_choice")
     def validate_over_under_bet(cls, v, values):
         if values.get("bet_type") == "over_under" and v is None:
-            raise ValueError("over_under_choice is required for over/under bets")
+            raise ValueError("over_under_choice is required for Total bets")
         return v
 
 

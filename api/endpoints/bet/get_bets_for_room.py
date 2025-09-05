@@ -141,6 +141,7 @@ def get_bets_for_room(
                     # Game hasn't started, return partial details only
                     bet.game_bet = None
                     bet.total_points_earned = None
+                    bet.game_id = None
                     bet.odds_snapshot = {}
                     processed_bets.append(bet.dict())
 

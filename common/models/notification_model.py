@@ -20,6 +20,7 @@ class NotificationModel(BaseModel):
     message: str
     notification_type: NotificationType
     timestamp: int  # Epoch timestamp
+    room_id: Optional[str] = None  # Optional, if the notification is related to a room
 
     @validator("message")
     def validate_message(cls, v):
