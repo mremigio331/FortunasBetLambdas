@@ -3,6 +3,7 @@ from exceptions.user_exceptions import (
     UserNotFound,
     InvalidUserIdException,
     ProfileNotPublicOrDoesNotExist,
+    UserNameTooLong,
 )
 from exceptions.jwt_exeptions import (
     InvalidJWTException,
@@ -62,6 +63,11 @@ def exceptions_decorator(func):
         except InvalidUserIdException as exc:
             return JSONResponse(
                 content={"message": str(exc) or "Invalid user ID."}, status_code=400
+            )
+        except UserNameTooLong as exc:
+            return JSONResponse(
+                content={"message": str(exc) or "User name is too long."},
+                status_code=400,
             )
         except (
             InvalidLeagueException,

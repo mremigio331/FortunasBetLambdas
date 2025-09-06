@@ -33,3 +33,18 @@ class UserProfileModel(BaseModel):
         if v.lower() not in allowed_colors:
             raise ValueError(f'Color must be one of: {", ".join(allowed_colors)}')
         return v.lower()
+
+    @validator("name")
+    def validate_name(cls, v):
+        """Validate that name is not empty and is at most 25 characters"""
+        import logging
+
+        logging.basicConfig(level=logging.INFO)
+        logging.info(f"Validating name: '{v}' (type: {type(v)})")
+        if not v or len(v) > 25:
+            logging.warning(
+                f"Name validation failed: '{v}' (length: {len(v) if v else 0})"
+            )
+            raise UserNameTooLong(25)
+        logging.info(f"Name validation passed: '{v}' (length: {len(v)})")
+        return v.strip()

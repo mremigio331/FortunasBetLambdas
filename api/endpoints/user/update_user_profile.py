@@ -44,6 +44,15 @@ def update_user_profile(request: Request, user_profile: UpdateUserProfileRequest
         logger.warning("User ID not found in request state.")
         raise InvalidUserIdException("User ID not found in request.")
 
+    # Validate name length at the API level
+    if user_profile.name is not None and len(user_profile.name.strip()) > 25:
+        from exceptions.user_exceptions import UserNameTooLong
+
+        logger.warning(
+            f"Name too long: '{user_profile.name}' (length: {len(user_profile.name.strip())})"
+        )
+        raise UserNameTooLong(25)
+
     try:
         user_profile_helper = UserProfileHelper(request_id=request.state.request_id)
         updated_profile = user_profile_helper.update_user_profile_fields(
