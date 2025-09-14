@@ -19,10 +19,15 @@ class BetHelper:
     A class to interact with DynamoDB for bet operations in the FortunasBet application.
     """
 
-    def __init__(self, request_id: str):
+    def __init__(self, request_id: str, table_name: str = None):
         self.dynamodb = boto3.resource("dynamodb", region_name="us-west-2")
-        table_name = os.getenv("TABLE_NAME")
-        self.table = self.dynamodb.Table(table_name)
+
+        if table_name:
+            self.table = self.dynamodb.Table(table_name)
+        else:
+            table_name = os.getenv("TABLE_NAME")
+            self.table = self.dynamodb.Table(table_name)
+
         self.logger = Logger()
         self.request_id = request_id
         self.logger.append_keys(request_id=request_id)
@@ -581,16 +586,24 @@ class BetHelper:
             game_bet = bet_data["game_bet"]
             self.logger.info(f"Grading spread bet for game_bet: {game_bet}")
             selected_team = game_bet["team_choice"]  # This should be "home" or "away"
-            if game_bet.get("spread_value") is not None:
-                spread_value = float(game_bet["spread_value"])
-                self.logger.info(
-                    f"Using spread_value from game_bet['spread_value']: {spread_value}"
+
+            # Use spreadDetails from odds_snapshot
+            spread_details = bet_data["odds_snapshot"].get("spreadDetails")
+            if not spread_details:
+                self.logger.warning(
+                    f"Missing spreadDetails in odds_snapshot for bet: {bet_data}"
                 )
-            else:
-                spread_value = float(bet_data["odds_snapshot"]["spread"])
-                self.logger.info(
-                    f"Using spread_value from odds_snapshot['spread']: {spread_value}"
+                return None
+
+            try:
+                spread_value = float(spread_details.split(" ")[1])
+                self.logger.info(f"Parsed spread value: {spread_value}")
+            except (IndexError, ValueError) as e:
+                self.logger.error(
+                    f"Error parsing spreadDetails '{spread_details}': {e}"
                 )
+                return None
+
             points_wagered = bet_data["points_wagered"]
 
             self.logger.info(
@@ -644,10 +657,6 @@ class BetHelper:
             )
 
             # Calculate the spread result
-            # Spread is always from the perspective of the selected team
-            # Positive spread means the team is favored by that amount
-            # Negative spread means the team is the underdog by that amount
-
             if selected_team.lower() == "home":
                 selected_score = home_score
                 opponent_score = away_score
@@ -660,13 +669,13 @@ class BetHelper:
             # Calculate the margin (selected team score - opponent score)
             margin = selected_score - opponent_score
 
-            # For spread betting:
-            # If spread is -3.5, the team must win by MORE than 3.5 points
-            # If spread is +3.5, the team can lose by UP TO 3.5 points and still "cover"
-
-            # User wins if: margin > spread_value
-            # This works for both positive and negative spreads
-            user_wins = margin > spread_value
+            # Determine if the bet is a win based on the spread value
+            if spread_value < 0:
+                # For negative spreads, the margin must be greater than or equal to the absolute spread
+                user_wins = margin >= abs(spread_value)
+            else:
+                # For positive spreads, the margin must be greater than the spread
+                user_wins = margin > spread_value
 
             points_earned = points_wagered if user_wins else 0
 
@@ -877,3 +886,67 @@ class BetHelper:
         )
         self.logger.info(f"Odds snapshot match result: {match}")
         return match
+
+    def reset_bets_for_room(self, room_id: str) -> None:
+        """
+        Reset all bets in a given room by setting their total_points_earned to None.
+
+        Args:
+            room_id: The room ID whose bets need to be reset.
+        """
+        try:
+            # Fetch all bets for the room
+            bets = self.get_all_bets_for_room(room_id)
+
+            for bet in bets:
+                # Update total_points_earned to None
+                bet["total_points_earned"] = None
+
+                # Convert to DynamoDB format and update the item
+                item = self._convert_floats_to_decimals(bet)
+                self.table.put_item(Item=item)
+
+                self.logger.info(
+                    f"Reset total_points_earned for bet with PK: {bet['PK']}, SK: {bet['SK']}"
+                )
+
+            self.logger.info(f"Successfully reset all bets for room {room_id}")
+        except Exception as e:
+            self.logger.error(f"Error resetting bets for room {room_id}: {e}")
+            raise
+
+    def reset_bet(self, room_id: str, points_wagered: int, user_id: str, event_datetime: int) -> None:
+        """
+        Reset an individual bet by setting its total_points_earned to None.
+
+        Args:
+            room_id: The room ID.
+            points_wagered: The points wagered for the bet.
+            user_id: The user ID who placed the bet.
+            event_datetime: The event datetime for the bet.
+        """
+        try:
+            # Fetch the specific bet
+            bet = self.get_bet(room_id, points_wagered, user_id, event_datetime)
+
+            if not bet:
+                self.logger.warning(
+                    f"No bet found for room_id={room_id}, points_wagered={points_wagered}, user_id={user_id}, event_datetime={event_datetime}"
+                )
+                return
+
+            # Update total_points_earned to None
+            bet["total_points_earned"] = None
+
+            # Convert to DynamoDB format and update the item
+            item = self._convert_floats_to_decimals(bet)
+            self.table.put_item(Item=item)
+
+            self.logger.info(
+                f"Reset total_points_earned for bet with PK: {bet['PK']}, SK: {bet['SK']}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Error resetting bet for room_id={room_id}, points_wagered={points_wagered}, user_id={user_id}, event_datetime={event_datetime}: {e}"
+            )
+            raise
