@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, validator
 from datetime import datetime
 from typing import Optional, Literal, Dict, Any
 from boto3.dynamodb.types import TypeDeserializer
+import random
 
 
 class GameBet(BaseModel):
@@ -56,6 +57,7 @@ class BetModel(BaseModel):
 
     # Week/Room info
     room_id: str
+    bet_id: str = None
     season_type: int  # 1=preseason, 2=regular, 3=postseason
     week: int  # Week number within the season (from ESPN API)
     event_datetime: (
@@ -90,4 +92,12 @@ class BetModel(BaseModel):
     def validate_game_bet_required(cls, v):
         if not v:
             raise ValueError("game_bet is required")
+        return v
+
+    @validator("bet_id", pre=True, always=True)
+    def set_bet_id(cls, v):
+        if v is None:
+            return str(
+                random.randint(1000000, 9999999)
+            )  # Generate a random ID if not provided
         return v

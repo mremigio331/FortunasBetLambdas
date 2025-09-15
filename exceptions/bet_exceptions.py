@@ -103,3 +103,11 @@ class GameDataNotFoundException(BetException):
             )
         else:
             super().__init__(f"Unable to retrieve game data for game {game_id}")
+
+
+class DuplicateGameException(BetException):
+    """Raised when attempting to place a bet on a game that already has a bet."""
+
+    def __init__(self, game_id: str):
+        self.game_id = game_id
+        super().__init__(f"A bet already exists for game {game_id}")

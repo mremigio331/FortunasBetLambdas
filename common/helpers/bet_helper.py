@@ -7,11 +7,14 @@ from exceptions.bet_exceptions import (
     DuplicateBetException,
     BetNotFound,
     InvalidGameStatusException,
+    DuplicateGameException,
 )
 import os
 from typing import List, Optional, Any, Dict
 from decimal import Decimal
 from clients.espn_client import ESPNClient
+import random
+import uuid
 
 
 class BetHelper:
@@ -98,6 +101,11 @@ class BetHelper:
 
         # Convert float values to Decimal for DynamoDB compatibility
         item = self._convert_floats_to_decimals(item)
+
+        # Check if the user has already placed a bet on the same game ID
+        user_game_ids = self.get_user_game_ids_for_room(bet.room_id, bet.user_id)
+        if bet.game_id in user_game_ids:
+            raise DuplicateGameException(bet.game_id)
 
         try:
             self.table.put_item(Item=item)
@@ -271,6 +279,45 @@ class BetHelper:
         except ClientError as e:
             self.logger.error(
                 f"Error fetching bets for user {user_id} in room {room_id}: {e}"
+            )
+            raise
+
+    def get_user_game_ids_for_room(self, room_id: str, user_id: str) -> List[str]:
+        """
+        Get all game IDs a user has placed bets on in a specific room.
+
+        Args:
+            room_id: The room ID.
+            user_id: The user ID.
+
+        Returns:
+            List of game IDs the user has placed bets on.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": f"POINT#",
+                },
+            )
+            items = response.get("Items", [])
+
+            # Filter items for the specific user and extract game IDs
+            user_id_str = f"USER#{user_id}"
+            game_ids = [
+                item["game_id"]
+                for item in items
+                if user_id_str in item.get("SK", "") and "game_id" in item
+            ]
+
+            self.logger.info(
+                f"Retrieved {len(game_ids)} game IDs for user {user_id} in room {room_id}"
+            )
+            return game_ids
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching game IDs for user {user_id} in room {room_id}: {e}"
             )
             raise
 
@@ -952,4 +999,42 @@ class BetHelper:
             self.logger.error(
                 f"Error resetting bet for room_id={room_id}, points_wagered={points_wagered}, user_id={user_id}, event_datetime={event_datetime}: {e}"
             )
+            raise
+
+    def assign_bet_uuids(self, room_id: str) -> int:
+        """
+        Assign a UUID to any bet in the room that doesn't already have one.
+
+        Args:
+            room_id: The room ID whose bets need to be checked and updated.
+
+        Returns:
+            int: The number of bets updated.
+        """
+        try:
+            # Fetch all bets for the room
+            bets = self.get_all_bets_for_room(room_id)
+            updated_count = 0
+
+            for bet in bets:
+                if "bet_uuid" not in bet:
+                    # Generate a UUID for bet_uuid
+                    bet["bet_uuid"] = str(uuid.uuid4())
+
+                    # Convert to DynamoDB format and update the item
+                    item = self._convert_floats_to_decimals(bet)
+                    self.table.put_item(Item=item)
+
+                    self.logger.info(
+                        f"Assigned bet_uuid {bet['bet_uuid']} to bet with PK: {bet['PK']}, SK: {bet['SK']}"
+                    )
+                    updated_count += 1
+
+            self.logger.info(
+                f"Assigned bet_uuid to {updated_count} bets in room {room_id}"
+            )
+            return updated_count
+        except Exception as e:
+            self.logger.error(f"Error assigning bet_uuids for room {room_id}: {e}")
+            raise
             raise

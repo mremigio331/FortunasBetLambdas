@@ -22,6 +22,7 @@ from exceptions.room_exceptions import (
 )
 from exceptions.bet_exceptions import (
     DuplicateBetException,
+    DuplicateGameException,
     BetNotFound,
     InvalidGameStatusException,
     InvalidPointsWageredException,
@@ -92,6 +93,14 @@ def exceptions_decorator(func):
                     "room_id": exc.room_id,
                     "user_id": exc.user_id,
                     "points_wagered": exc.points_wagered,
+                },
+                status_code=409,
+            )
+        except DuplicateGameException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "A bet already exists for this game.",
+                    "game_id": exc.game_id,
                 },
                 status_code=409,
             )
