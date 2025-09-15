@@ -26,6 +26,8 @@ app = FastAPI(
 stage = os.getenv("STAGE", "").lower()
 if stage == "prod":
     allowed_origins = ["https://fortunasbet.com"]
+elif stage == "testing":
+    allowed_origins = ["https://testing.fortunasbet.com"]
 else:
     allowed_origins = ["*"]
 
