@@ -4,3 +4,4 @@ __pycache__/
 *.zip
 .DS
 *.pyc
+local_api.log

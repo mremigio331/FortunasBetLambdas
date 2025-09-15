@@ -14,4 +14,5 @@ export COGNITO_DOMAIN="https://fortunasbet-testing.auth.us-west-2.amazoncognito.
 export API_URL="https://api.testing.fortunasbet.com"
 export TABLE_NAME="FortunasBet-UserTable-Testing"
 
-uvicorn app:app --reload --port 5000
+LOG_FILE="local_api.log"
+uvicorn app:app --reload --port 5000 2>&1 | tee "$LOG_FILE"

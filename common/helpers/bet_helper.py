@@ -909,13 +909,16 @@ class BetHelper:
                 self.logger.info(
                     f"Reset total_points_earned for bet with PK: {bet['PK']}, SK: {bet['SK']}"
                 )
+            return len(bets)
 
             self.logger.info(f"Successfully reset all bets for room {room_id}")
         except Exception as e:
             self.logger.error(f"Error resetting bets for room {room_id}: {e}")
             raise
 
-    def reset_bet(self, room_id: str, points_wagered: int, user_id: str, event_datetime: int) -> None:
+    def reset_bet(
+        self, room_id: str, points_wagered: int, user_id: str, event_datetime: int
+    ) -> None:
         """
         Reset an individual bet by setting its total_points_earned to None.
 
