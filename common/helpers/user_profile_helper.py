@@ -55,46 +55,37 @@ class UserProfileHelper:
 
     def get_user_profile(self, user_id: str) -> dict | None:
         """
-        Fetch a user profile from DynamoDB by user_id.
+        Fetch a user profile from DynamoDB by user_id using a query.
         Returns a dict with user_id, email, name, created_at, and color.
-        Scans all pages if needed (handles LastEvaluatedKey).
         """
         try:
-            last_evaluated_key = None
-            while True:
-                scan_kwargs = {
-                    "FilterExpression": "PK = :pk AND SK = :sk",
-                    "ExpressionAttributeValues": {
-                        ":pk": f"USER#{user_id}",
-                        ":sk": self.sk,
-                    },
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND SK = :sk",
+                ExpressionAttributeValues={
+                    ":pk": f"USER#{user_id}",
+                    ":sk": self.sk,
+                },
+            )
+            items = response.get("Items", [])
+            if items:
+                item = items[0]
+                pk_value = item.get("PK", "")
+                user_id_value = (
+                    pk_value.replace("USER#", "")
+                    if pk_value.startswith("USER#")
+                    else pk_value
+                )
+                result = {
+                    "user_id": user_id_value,
+                    "email": item.get("email"),
+                    "name": item.get("name"),
+                    "created_at": int(item.get("created_at")),
+                    "color": item.get("color", "black"),
                 }
-                if last_evaluated_key:
-                    scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
-                response = self.table.scan(**scan_kwargs)
-                items = response.get("Items", [])
-                if items:
-                    item = items[0]
-                    pk_value = item.get("PK", "")
-                    user_id_value = (
-                        pk_value.replace("USER#", "")
-                        if pk_value.startswith("USER#")
-                        else pk_value
-                    )
-                    result = {
-                        "user_id": user_id_value,
-                        "email": item.get("email"),
-                        "name": item.get("name"),
-                        "created_at": int(item.get("created_at")),
-                        "color": item.get("color", "black"),
-                    }
-                    return result
-                last_evaluated_key = response.get("LastEvaluatedKey")
-                if not last_evaluated_key:
-                    self.logger.info(
-                        f"No user profile found for {user_id} after scanning all pages."
-                    )
-                    return None
+                return result
+
+            self.logger.info(f"No user profile found for {user_id}.")
+            return None
         except ClientError as e:
             self.logger.error(f"Error fetching user profile for {user_id}: {e}")
             raise
