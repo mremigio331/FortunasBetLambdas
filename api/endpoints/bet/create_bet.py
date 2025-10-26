@@ -71,6 +71,18 @@ class CreateGameBetRequest(BaseModel):
             raise InvalidBetTypeException("over_under", "over_under_choice")
         return v
 
+    @validator("team_choice", pre=True)
+    def validate_team_choice(cls, v):
+        if isinstance(v, dict):
+            # Extract 'teamChoice' from the dictionary
+            team_choice = v.get("teamChoice")
+            if team_choice not in ["home", "away"]:
+                raise ValueError("Input should be 'home' or 'away'")
+            return team_choice
+        elif v not in ["home", "away", None]:
+            raise ValueError("Input should be 'home' or 'away'")
+        return v
+
 
 class CreateBetRequest(BaseModel):
     """Request model for creating a bet."""

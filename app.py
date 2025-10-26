@@ -12,6 +12,7 @@ import os
 import configparser
 from starlette.middleware.base import BaseHTTPMiddleware
 from common.constants.services import API_SERVICE
+from middleware.versioning_middleware import VersioningMiddleware
 
 logger = Logger(service=API_SERVICE)
 app = FastAPI(
@@ -42,6 +43,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(VersioningMiddleware)
 
 inject_user_token()
 

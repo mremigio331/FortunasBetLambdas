@@ -14,6 +14,7 @@ import os
 from common.helpers.room_helper import RoomHelper
 from common.helpers.user_profile_helper import UserProfileHelper
 from common.constants.services import API_SERVICE
+from common.helpers.nfl_helper import NFLHelper
 
 logger = Logger(service=API_SERVICE)
 router = APIRouter()
@@ -61,6 +62,13 @@ def get_room(
             ]
 
         room_dict = jsonable_encoder(room)
+
+        nfl_helper = NFLHelper(request_id=request.state.request_id)
+        weeks = nfl_helper.find_nfl_weeks_in_range(
+            room_dict.get("start_date"), room_dict.get("end_date")
+        )
+        room_dict["nfl_weeks"] = weeks
+
         logger.info(f"Successfully retrieved room {room_id}")
 
         return JSONResponse(

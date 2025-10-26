@@ -160,6 +160,59 @@ class BetHelper:
         )
         return None
 
+    def get_all_bets_for_room_by_week(
+        self, room_id: str, week: int, season_type: int
+    ) -> List[dict]:
+        """
+        Fetch all bets for a specific room that belong to a given week.
+
+        Works like `get_all_bets_for_room` but filters items where the `week`
+        attribute equals the provided `week` parameter.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                FilterExpression="#week = :week_val AND #season_type = :season_type_val",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": "POINT#",
+                    ":week_val": week,
+                    ":season_type_val": season_type,
+                },
+                ExpressionAttributeNames={
+                    "#week": "week",
+                    "#season_type": "season_type",
+                },
+            )
+
+            items = response.get("Items", [])
+
+            # Convert Decimal values back to float for JSON serialization
+            serializable_items = [
+                self._convert_decimals_to_floats(item) for item in items
+            ]
+
+            # Check and grade each bet if needed, then enhance with game data
+            graded_items = []
+            for item in serializable_items:
+                graded_bet = self.check_and_grade_bet(item)
+                if graded_bet:
+                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
+                    graded_items.append(enhanced_bet)
+                else:
+                    enhanced_bet = self._enhance_bet_with_game_data(item)
+                    graded_items.append(enhanced_bet)
+
+            self.logger.info(
+                f"Retrieved {len(graded_items)} bets for room {room_id} in week {week} season type {season_type}"
+            )
+            return graded_items
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching bets for room {room_id} by week {week} season type {season_type}: {e}"
+            )
+            raise
+
     def get_all_bets_for_room(self, room_id: str) -> List[dict]:
         """
         Fetch all bets for a specific room, ordered by point value then user.
@@ -622,76 +675,128 @@ class BetHelper:
         """
         Grade a spread bet based on game results.
 
-        Args:
-            bet_data: The bet dictionary
-            game_data: Game data from ESPN API
+        Uses odds_snapshot.favoredTeam and spread (or spreadDetails fallback) to
+        compute the selected team's line. Favored = -|spread|, underdog = +|spread|.
+        Win if selected_score + selected_line > opponent_score.
+        Push if equal. Loss otherwise.
 
         Returns:
-            Points earned (points_wagered if won, 0 if lost, None if error)
+            Points earned (points_wagered if won, 0 if lost/push, None if error)
         """
         try:
             game_bet = bet_data["game_bet"]
-            self.logger.info(f"Grading spread bet for game_bet: {game_bet}")
-            selected_team = game_bet["team_choice"]  # This should be "home" or "away"
-
-            # Use spreadDetails from odds_snapshot
-            spread_details = bet_data["odds_snapshot"].get("spreadDetails")
-            if not spread_details:
-                self.logger.warning(
-                    f"Missing spreadDetails in odds_snapshot for bet: {bet_data}"
-                )
-                return None
-
-            try:
-                spread_value = float(spread_details.split(" ")[1])
-                self.logger.info(f"Parsed spread value: {spread_value}")
-            except (IndexError, ValueError) as e:
-                self.logger.error(
-                    f"Error parsing spreadDetails '{spread_details}': {e}"
-                )
-                return None
-
-            points_wagered = bet_data["points_wagered"]
-
-            self.logger.info(
-                f"Grading spread bet: team_choice={selected_team}, spread_value={spread_value}, points_wagered={points_wagered}"
+            selected_team = (
+                game_bet.get("team_choice") or ""
+            ).lower()  # "home" or "away"
+            points_wagered = bet_data.get(
+                "points_wagered", game_bet.get("points_wagered", 0)
             )
 
-            # Get team scores from game data
+            if selected_team not in {"home", "away"}:
+                self.logger.warning(f"Invalid team_choice: {selected_team!r}")
+                return None
+
+            # ---- pull spread info ----
+            snap = bet_data.get("odds_snapshot", {}) or {}
+            fav_side = (snap.get("favoredTeam") or "").lower()  # 'home' / 'away' / ''
+            raw_spread = snap.get("spread")
+
+            # Fallback: parse from "DAL -5.5" or "NYG +3.0" or "PK"
+            if raw_spread is None:
+                spread_details = snap.get("spreadDetails")
+                if spread_details is None:
+                    self.logger.warning(
+                        f"Missing spread in odds_snapshot for bet: {bet_data}"
+                    )
+                    return None
+                try:
+                    # last token usually numeric; handle "PK" as 0
+                    last_tok = str(spread_details).split()[-1]
+                    raw_spread = (
+                        0.0
+                        if last_tok.upper() in {"PK", "PICK", "PICK'EM"}
+                        else float(last_tok)
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Error parsing spreadDetails '{spread_details}': {e}"
+                    )
+                    return None
+
+            try:
+                spread_mag = abs(float(raw_spread))
+            except Exception as e:
+                self.logger.error(f"Invalid spread value {raw_spread!r}: {e}")
+                return None
+
+            # If favoredTeam missing, infer from home/away sign convention:
+            # Commonly, negative means home favored, positive means away favored.
+            if not fav_side:
+                if float(raw_spread) < 0:
+                    fav_side = "home"
+                elif float(raw_spread) > 0:
+                    fav_side = "away"
+                else:
+                    fav_side = ""  # pick'em
+
+            # Selected team's actual line: favored gets -|spread|, dog gets +|spread|
+            if spread_mag == 0.0:
+                selected_line = 0.0  # pick'em
+            elif selected_team == fav_side:
+                selected_line = -spread_mag
+            else:
+                selected_line = +spread_mag
+
+            self.logger.info(
+                f"Spread context -> favoredTeam={fav_side or 'none'}, "
+                f"raw_spread={raw_spread}, selected_team={selected_team}, "
+                f"selected_line={selected_line:+.1f}"
+            )
+
+            # ---- extract scores from ESPN game_data ----
             competitors = game_data.get("competitors", [])
+            if not competitors:
+                # some payloads use 'competitions[0].competitors'
+                competitions = game_data.get("competitions") or []
+                if competitions and isinstance(competitions[0], dict):
+                    competitors = competitions[0].get("competitors", [])
 
             if not competitors:
                 self.logger.warning(
-                    f"No competitor data found in game_data. Available keys: {list(game_data.keys())}"
+                    f"No competitor data found in game_data. Keys: {list(game_data.keys())}"
                 )
                 return None
 
-            home_score = None
-            away_score = None
-            home_team_name = None
-            away_team_name = None
+            home_score = away_score = None
+            home_team_name = away_team_name = None
 
             for competitor in competitors:
                 try:
                     score = int(competitor.get("score", 0))
-                    team_name = competitor.get("name", "Unknown")
-                    home_away = competitor.get("homeAway", "")
+                except (TypeError, ValueError):
+                    # sometimes score is nested or stringy; try harder
+                    raw = competitor.get("score") or competitor.get("linescores") or 0
+                    try:
+                        score = int(raw)
+                    except Exception:
+                        self.logger.error(
+                            f"Unparseable score in competitor: {competitor}"
+                        )
+                        return None
 
-                    if home_away.lower() == "home":
-                        home_score = score
-                        home_team_name = team_name
-                    elif home_away.lower() == "away":
-                        away_score = score
-                        away_team_name = team_name
+                team_name = (
+                    competitor.get("name")
+                    or (competitor.get("team") or {}).get("displayName")
+                    or "Unknown"
+                )
+                home_away = (competitor.get("homeAway") or "").lower()
 
-                    self.logger.info(
-                        f"Team: {team_name} ({home_away}) - Score: {score}"
-                    )
-                except (ValueError, TypeError) as e:
-                    self.logger.error(
-                        f"Error parsing score for competitor {competitor}: {e}"
-                    )
-                    return None
+                if home_away == "home":
+                    home_score = score
+                    home_team_name = team_name
+                elif home_away == "away":
+                    away_score = score
+                    away_team_name = team_name
 
             if home_score is None or away_score is None:
                 self.logger.error(
@@ -699,38 +804,40 @@ class BetHelper:
                 )
                 return None
 
-            self.logger.info(
-                f"Team scores - Home: {home_team_name} = {home_score}, Away: {away_team_name} = {away_score}"
-            )
-
-            # Calculate the spread result
-            if selected_team.lower() == "home":
-                selected_score = home_score
-                opponent_score = away_score
+            # ---- choose selected/opponent scores by side ----
+            if selected_team == "home":
+                selected_score, opponent_score = home_score, away_score
                 selected_team_name = home_team_name
-            else:  # away
-                selected_score = away_score
-                opponent_score = home_score
+            else:
+                selected_score, opponent_score = away_score, home_score
                 selected_team_name = away_team_name
 
-            # Calculate the margin (selected team score - opponent score)
-            margin = selected_score - opponent_score
-
-            # Determine if the bet is a win based on the spread value
-            if spread_value < 0:
-                # For negative spreads, the margin must be greater than or equal to the absolute spread
-                user_wins = margin >= abs(spread_value)
+            # ---- grade ----
+            margin = (
+                float(selected_score) + float(selected_line) - float(opponent_score)
+            )
+            if margin > 0:
+                result_str = "win"
+                points_earned = float(points_wagered)
+            elif margin == 0:
+                result_str = "push"
+                points_earned = 0.0
             else:
-                # For positive spreads, the margin must be greater than the spread
-                user_wins = margin > spread_value
+                result_str = "loss"
+                points_earned = 0.0
 
-            points_earned = points_wagered if user_wins else 0
+            # Persist back into the bet record (optional but useful)
+            try:
+                game_bet["result"] = result_str
+                game_bet["points_earned"] = points_earned
+                bet_data["total_points_earned"] = points_earned
+            except Exception:
+                pass
 
             self.logger.info(
-                f"Spread bet graded: {selected_team_name} ({selected_team.upper()}) "
-                f"spread {spread_value:+.1f}, "
-                f"Margin: {margin} (scored {selected_score}, opponent {opponent_score}), "
-                f"Result: {'WIN' if user_wins else 'LOSS'} ({points_earned} points)"
+                f"Spread graded: {selected_team_name} ({selected_team.upper()}) "
+                f"line {selected_line:+.1f}; scored {selected_score} vs {opponent_score}; "
+                f"margin {margin:.1f} -> {result_str.upper()} ({points_earned} pts)"
             )
 
             return points_earned
@@ -1036,5 +1143,6 @@ class BetHelper:
             return updated_count
         except Exception as e:
             self.logger.error(f"Error assigning bet_uuids for room {room_id}: {e}")
+            raise
             raise
             raise
