@@ -28,7 +28,7 @@ class GameBet(BaseModel):
 
     # Bet result (calculated after game completion)
     result: Optional[Literal["win", "loss", "push"]] = None
-    points_earned: Optional[int] = None
+    points_earned: Optional[float] = None
 
     @validator("points_wagered")
     def validate_points_wagered(cls, v):
@@ -73,7 +73,7 @@ class BetModel(BaseModel):
     # Bet details - now a single game bet instead of multiple
     game_bet: GameBet  # Single game bet
     points_wagered: int  # 1, 2, or 3 points (now redundant with game_bet.points_wagered but kept for clarity)
-    total_points_earned: Optional[int] = None
+    total_points_earned: Optional[float] = None
 
     # Submission info
     submitted_at: int  # Epoch timestamp

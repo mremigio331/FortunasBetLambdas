@@ -172,16 +172,9 @@ class BetHelper:
         try:
             response = self.table.query(
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-                FilterExpression="#week = :week_val AND #season_type = :season_type_val",
                 ExpressionAttributeValues={
                     ":pk": f"ROOM#{room_id}",
                     ":sk_prefix": "POINT#",
-                    ":week_val": week,
-                    ":season_type_val": season_type,
-                },
-                ExpressionAttributeNames={
-                    "#week": "week",
-                    "#season_type": "season_type",
                 },
             )
 
@@ -194,7 +187,36 @@ class BetHelper:
 
             # Check and grade each bet if needed, then enhance with game data
             graded_items = []
-            for item in serializable_items:
+            # Filter by week/season_type; derive via ESPN if attributes are missing or inconsistent
+            filtered_items = []
+            espn_client = ESPNClient(request_id=self.request_id)
+            for it in serializable_items:
+                wk = it.get("week")
+                st = it.get("season_type")
+                try:
+                    if wk is not None and st is not None:
+                        if int(wk) == int(week) and int(st) == int(season_type):
+                            filtered_items.append(it)
+                        continue
+                    ev = espn_client.get_event(
+                        sport=it.get("sport"),
+                        league=it.get("league"),
+                        event_id=it.get("game_id"),
+                    )
+                    header = (ev or {}).get("header", {})
+                    wk_num = (header.get("week") or {}).get("number")
+                    seas_type = (header.get("season") or {}).get("type")
+                    if (
+                        wk_num is not None
+                        and seas_type is not None
+                        and int(wk_num) == int(week)
+                        and int(seas_type) == int(season_type)
+                    ):
+                        filtered_items.append(it)
+                except Exception:
+                    # If derivation fails, skip that item
+                    pass
+            for item in filtered_items:
                 graded_bet = self.check_and_grade_bet(item)
                 if graded_bet:
                     enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
@@ -641,9 +663,11 @@ class BetHelper:
             points_earned = None
 
             if bet_type == "spread":
-                points_earned = self._grade_spread_bet(bet_data, game_data)
+                points_earned, result_str = self._grade_spread_bet(bet_data, game_data)
             elif bet_type == "over_under":
-                points_earned = self._grade_over_under_bet(bet_data, game_data)
+                points_earned, result_str = self._grade_over_under_bet(
+                    bet_data, game_data
+                )
             else:
                 self.logger.error(f"Unknown bet type: {bet_type}")
                 return None
@@ -653,7 +677,9 @@ class BetHelper:
                     f"Bet grading complete - earned {points_earned} points, updating database"
                 )
                 # Update the bet with the graded result
-                updated_bet = self._update_bet_result(bet_data, points_earned)
+                updated_bet = self._update_bet_result(
+                    bet_data, points_earned, result_str
+                )
                 self.logger.info(
                     f"Successfully updated bet in database with {points_earned} points"
                 )
@@ -821,7 +847,7 @@ class BetHelper:
                 points_earned = float(points_wagered)
             elif margin == 0:
                 result_str = "push"
-                points_earned = 0.0
+                points_earned = float(points_wagered) / 2.0
             else:
                 result_str = "loss"
                 points_earned = 0.0
@@ -840,13 +866,13 @@ class BetHelper:
                 f"margin {margin:.1f} -> {result_str.upper()} ({points_earned} pts)"
             )
 
-            return points_earned
+            return points_earned, result_str
 
         except Exception as e:
             self.logger.error(f"Error grading spread bet: {e}")
             return None
 
-    def _grade_over_under_bet(self, bet_data: dict, game_data: dict) -> Optional[float]:
+    def _grade_over_under_bet(self, bet_data: dict, game_data: dict) -> Optional[tuple]:
         """
         Grade an Total bet based on game results.
 
@@ -855,7 +881,7 @@ class BetHelper:
             game_data: Game data from ESPN API
 
         Returns:
-            Points earned (points_wagered if won, 0 if lost, None if error)
+            Tuple of (points_earned, result_str) or None if error
         """
         try:
             game_bet = bet_data["game_bet"]
@@ -901,27 +927,40 @@ class BetHelper:
                 f"Total game score: {total_score} (Teams: {', '.join(team_scores)})"
             )
 
-            # Determine if bet won
-            if over_under_choice.lower() == "over":
-                user_wins = total_score > total_line
+            # Determine if bet won, lost, or pushed
+            if total_score == total_line:
+                result_str = "push"
+                points_earned = float(points_wagered) / 2.0
+            elif over_under_choice.lower() == "over":
+                if total_score > total_line:
+                    result_str = "win"
+                    points_earned = float(points_wagered)
+                else:
+                    result_str = "loss"
+                    points_earned = 0.0
             else:  # under
-                user_wins = total_score < total_line
-
-            points_earned = points_wagered if user_wins else 0
+                if total_score < total_line:
+                    result_str = "win"
+                    points_earned = float(points_wagered)
+                else:
+                    result_str = "loss"
+                    points_earned = 0.0
 
             self.logger.info(
                 f"Total bet graded: {over_under_choice.upper()} {total_line}, "
                 f"Total score: {total_score}, "
-                f"Result: {'WIN' if user_wins else 'LOSS'} ({points_earned} points)"
+                f"Result: {result_str.upper()} ({points_earned} points)"
             )
 
-            return points_earned
+            return points_earned, result_str
 
         except Exception as e:
             self.logger.error(f"Error grading Total bet: {e}")
             return None
 
-    def _update_bet_result(self, bet_data: dict, points_earned: float) -> dict:
+    def _update_bet_result(
+        self, bet_data: dict, points_earned: float, result_str: str
+    ) -> dict:
         """
         Update a bet in DynamoDB with the graded result.
 
@@ -948,11 +987,10 @@ class BetHelper:
 
             # Also update the game_bet result and points_earned
             if "game_bet" in bet_data:
-                result_text = "win" if points_earned > 0 else "loss"
-                bet_data["game_bet"]["result"] = result_text
-                bet_data["game_bet"]["points_earned"] = int(points_earned)
+                bet_data["game_bet"]["result"] = result_str
+                bet_data["game_bet"]["points_earned"] = points_earned
                 self.logger.info(
-                    f"Updated game_bet with result: {result_text}, points_earned: {points_earned}"
+                    f"Updated game_bet with result: {result_str}, points_earned: {points_earned}"
                 )
 
             self.logger.info(
@@ -961,6 +999,7 @@ class BetHelper:
 
             # Convert to DynamoDB format
             item = self._convert_floats_to_decimals(bet_data)
+            item["result"] = result_str
 
             # Log the key being updated
             pk = item.get("PK", f"ROOM#{room_id}")
