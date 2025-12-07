@@ -1038,20 +1038,34 @@ class BetHelper:
         away_odds_req = odds_snapshot.get("awayTeamOdds", {})
 
         pickcenter = event_data.get("pickcenter", [])
-        print(event_data)
         self.logger.info(f"Event pickcenter: {pickcenter}")
-        espn_bet = next(
-            (p for p in pickcenter if p.get("provider", {}).get("name") == "ESPN BET"),
+
+        # Try Draft Kings first, then fallback to any available provider
+        betting_provider = next(
+            (
+                p
+                for p in pickcenter
+                if p.get("provider", {}).get("name") == "Draft Kings"
+            ),
             None,
         )
-        if not espn_bet:
-            self.logger.warning("No ESPN BET provider found in event_data pickcenter.")
+
+        if not betting_provider and pickcenter:
+            # Use the first available provider if Draft Kings is not found
+            betting_provider = pickcenter[0]
+            provider_name = betting_provider.get("provider", {}).get("name", "Unknown")
+            self.logger.info(
+                f"Draft Kings not found, using {provider_name} provider instead"
+            )
+
+        if not betting_provider:
+            self.logger.warning("No betting provider found in event_data pickcenter.")
             return False
 
-        home_odds_event = espn_bet.get("homeTeamOdds", {})
-        away_odds_event = espn_bet.get("awayTeamOdds", {})
-        spread_event = espn_bet.get("spread")
-        over_under_event = espn_bet.get("overUnder")
+        home_odds_event = betting_provider.get("homeTeamOdds", {})
+        away_odds_event = betting_provider.get("awayTeamOdds", {})
+        spread_event = betting_provider.get("spread")
+        over_under_event = betting_provider.get("overUnder")
 
         spread_req = odds_snapshot.get("spread")
         over_under_req = odds_snapshot.get("overUnder")
@@ -1069,13 +1083,55 @@ class BetHelper:
             f"Comparing overUnder: request={over_under_req}, event={over_under_event}"
         )
 
+        # Helper function to compare odds values, treating None as a wildcard
+        def odds_match(req_value, event_value):
+            if req_value is None:
+                return True  # None in request matches any value from provider
+            return req_value == event_value
+
+        # Compare money line and spread odds with flexibility for None values
+        home_money_match = odds_match(
+            home_odds_req.get("moneyLine"), home_odds_event.get("moneyLine")
+        )
+        home_spread_match = odds_match(
+            home_odds_req.get("spreadOdds"), home_odds_event.get("spreadOdds")
+        )
+        away_money_match = odds_match(
+            away_odds_req.get("moneyLine"), away_odds_event.get("moneyLine")
+        )
+        away_spread_match = odds_match(
+            away_odds_req.get("spreadOdds"), away_odds_event.get("spreadOdds")
+        )
+
+        # Core betting values must match exactly
+        spread_match = spread_req == spread_event
+        over_under_match = over_under_req == over_under_event
+
         match = (
-            home_odds_req.get("moneyLine") == home_odds_event.get("moneyLine")
-            and home_odds_req.get("spreadOdds") == home_odds_event.get("spreadOdds")
-            and away_odds_req.get("moneyLine") == away_odds_event.get("moneyLine")
-            and away_odds_req.get("spreadOdds") == away_odds_event.get("spreadOdds")
-            and spread_req == spread_event
-            and over_under_req == over_under_event
+            home_money_match
+            and home_spread_match
+            and away_money_match
+            and away_spread_match
+            and spread_match
+            and over_under_match
+        )
+
+        self.logger.info(f"Detailed odds validation:")
+        self.logger.info(
+            f"  Home money line: {home_odds_req.get('moneyLine')} vs {home_odds_event.get('moneyLine')} = {home_money_match}"
+        )
+        self.logger.info(
+            f"  Home spread odds: {home_odds_req.get('spreadOdds')} vs {home_odds_event.get('spreadOdds')} = {home_spread_match}"
+        )
+        self.logger.info(
+            f"  Away money line: {away_odds_req.get('moneyLine')} vs {away_odds_event.get('moneyLine')} = {away_money_match}"
+        )
+        self.logger.info(
+            f"  Away spread odds: {away_odds_req.get('spreadOdds')} vs {away_odds_event.get('spreadOdds')} = {away_spread_match}"
+        )
+        self.logger.info(f"  Spread: {spread_req} vs {spread_event} = {spread_match}")
+        self.logger.info(
+            f"  Over/Under: {over_under_req} vs {over_under_event} = {over_under_match}"
         )
         self.logger.info(f"Odds snapshot match result: {match}")
         return match
