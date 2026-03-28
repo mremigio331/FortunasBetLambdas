@@ -38,6 +38,9 @@ class EditRoomRequest(BaseModel):
     archived: Optional[bool] = Field(
         None, description="Whether the room is archived (default False)"
     )
+    sport: Optional[str] = Field(
+        None, description="Sport field is immutable after room creation"
+    )
 
 
 @router.put("/edit_room", response_model=dict)
@@ -67,6 +70,14 @@ def edit_room(request: Request, room_data: EditRoomRequest):
         return JSONResponse(
             status_code=400,
             content={"message": "No fields provided for room update"},
+        )
+
+    if "sport" in update_fields:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": "The sport field cannot be changed after room creation"
+            },
         )
 
     try:
