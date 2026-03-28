@@ -12,6 +12,7 @@ from exceptions.room_exceptions import (
 
 allowed_leagues = ["NFL", "MLB"]
 allowed_sports = ["NFL", "MLB"]
+allowed_statuses = ["Active", "Archived", "Completed"]
 
 
 class RoomModel(BaseModel):
@@ -31,6 +32,7 @@ class RoomModel(BaseModel):
     start_date: int  # Epoch timestamp - when room/season starts
     end_date: int  # Epoch timestamp - when room/season ends
     archived: Optional[bool] = False  # Room archive status, default False, can be None
+    status: str = "Active"  # Room status: Active, Archived, or Completed
 
     @validator("leagues")
     def validate_leagues(cls, v):
@@ -50,6 +52,14 @@ class RoomModel(BaseModel):
         if v.upper() not in allowed_sports:
             raise InvalidSportException(sport=v, allowed_sports=allowed_sports)
         return v.upper()
+
+    @validator("status")
+    def validate_status(cls, v):
+        # Capitalize first letter for consistency
+        normalized = v.strip().capitalize()
+        if normalized not in allowed_statuses:
+            raise ValueError(f"Invalid status: {v}. Must be one of {allowed_statuses}")
+        return normalized
 
     @validator("admins")
     def validate_admins(cls, v, values):

@@ -128,6 +128,7 @@ class RoomHelper:
 
             if "Item" in response:
                 item = response["Item"]
+                status = item.get("status", "Active")
                 result = {
                     "room_id": room_id,
                     "room_name": item.get("room_name"),
@@ -141,7 +142,35 @@ class RoomHelper:
                     "start_date": item.get("start_date"),
                     "end_date": item.get("end_date"),
                     "archived": item.get("archived", False),
+                    "status": status,
                 }
+
+                # Auto-complete: if status is Active and end_date has passed, mark Completed
+                end_date = item.get("end_date")
+                if (
+                    status == "Active"
+                    and end_date
+                    and int(datetime.utcnow().timestamp()) > end_date
+                ):
+                    result["status"] = "Completed"
+                    try:
+                        self.table.update_item(
+                            Key={
+                                "PK": RoomModel.create_pk(room_id),
+                                "SK": RoomModel.create_sk(),
+                            },
+                            UpdateExpression="SET #status = :status",
+                            ExpressionAttributeNames={"#status": "status"},
+                            ExpressionAttributeValues={":status": "Completed"},
+                        )
+                        self.logger.info(
+                            f"Auto-completed room {room_id} (end_date passed)"
+                        )
+                    except ClientError as update_err:
+                        self.logger.warning(
+                            f"Failed to auto-complete room {room_id}: {update_err}"
+                        )
+
                 return result
             else:
                 self.logger.info(f"No room found for room_id {room_id}")
@@ -162,6 +191,7 @@ class RoomHelper:
         start_date: Optional[int] = None,
         end_date: Optional[int] = None,
         archived: Optional[bool] = None,
+        status: Optional[str] = None,
     ) -> dict:
         """
         Update room fields. Only room admins can update rooms.
@@ -218,6 +248,18 @@ class RoomHelper:
                 update_expr_parts.append("archived = :archived")
                 expr_attr_values[":archived"] = archived
 
+            if status is not None:
+                from common.models.room import allowed_statuses
+
+                normalized = status.strip().capitalize()
+                if normalized not in allowed_statuses:
+                    raise ValueError(
+                        f"Invalid status: {status}. Must be one of {allowed_statuses}"
+                    )
+                update_expr_parts.append("#status = :status")
+                expr_attr_names["#status"] = "status"
+                expr_attr_values[":status"] = normalized
+
             # Always update modified timestamp
             update_expr_parts.append("modified_at = :modified_at")
             expr_attr_values[":modified_at"] = current_time
@@ -257,6 +299,8 @@ class RoomHelper:
             # Ensure sport field is present for backward compatibility with old rooms
             if "sport" not in updated_room:
                 updated_room["sport"] = "NFL"
+            if "status" not in updated_room:
+                updated_room["status"] = "Active"
 
             self.logger.info(f"Updated room {room_id} by user {user_id}")
 
@@ -294,9 +338,10 @@ class RoomHelper:
                         ":pk_prefix": "ROOM#",
                         ":sk": self.room_sk,
                     },
-                    "ProjectionExpression": "PK, room_name, description, #public, leagues, sport, owner_id, admins",
+                    "ProjectionExpression": "PK, room_name, description, #public, leagues, sport, owner_id, admins, end_date, #status",
                     "ExpressionAttributeNames": {
-                        "#public": "public"  # 'public' is a reserved word
+                        "#public": "public",  # 'public' is a reserved word
+                        "#status": "status",  # 'status' is a reserved word
                     },
                 }
 
@@ -312,6 +357,31 @@ class RoomHelper:
                     pk_value = item.get("PK", "")
                     if pk_value.startswith("ROOM#"):
                         room_id = pk_value.replace("ROOM#", "")
+                        status = item.get("status", "Active")
+
+                        # Auto-complete: if Active and end_date has passed
+                        end_date = item.get("end_date")
+                        if (
+                            status == "Active"
+                            and end_date
+                            and int(datetime.utcnow().timestamp()) > end_date
+                        ):
+                            status = "Completed"
+                            try:
+                                self.table.update_item(
+                                    Key={"PK": pk_value, "SK": self.room_sk},
+                                    UpdateExpression="SET #status = :status",
+                                    ExpressionAttributeNames={"#status": "status"},
+                                    ExpressionAttributeValues={":status": "Completed"},
+                                )
+                                self.logger.info(
+                                    f"Auto-completed room {room_id} (end_date passed)"
+                                )
+                            except ClientError as update_err:
+                                self.logger.warning(
+                                    f"Failed to auto-complete room {room_id}: {update_err}"
+                                )
+
                         rooms.append(
                             {
                                 "room_id": room_id,
@@ -322,6 +392,7 @@ class RoomHelper:
                                 "sport": item.get("sport", "NFL"),
                                 "owner_id": item.get("owner_id"),
                                 "admins": item.get("admins", []),
+                                "status": status,
                             }
                         )
 
