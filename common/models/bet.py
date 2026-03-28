@@ -55,6 +55,17 @@ class BetModel(BaseModel):
     # pk: ROOM#{room_id}
     # sk: POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}
 
+    @staticmethod
+    def create_pk(room_id: str) -> str:
+        return f"ROOM#{room_id}"
+
+    @staticmethod
+    def create_sk(
+        points_wagered: int, user_id: str, event_datetime: int, removed: bool = False
+    ) -> str:
+        prefix = "REMOVED#" if removed else ""
+        return f"{prefix}POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}"
+
     # Week/Room info
     room_id: str
     bet_id: str = None

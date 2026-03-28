@@ -94,9 +94,9 @@ class BetHelper:
         )
 
         item = bet.dict()
-        item["PK"] = f"ROOM#{bet.room_id}"
-        item["SK"] = (
-            f"POINT#{bet.points_wagered}#USER#{bet.user_id}#EVENT#{bet.event_datetime}"
+        item["PK"] = BetModel.create_pk(bet.room_id)
+        item["SK"] = BetModel.create_sk(
+            bet.points_wagered, bet.user_id, bet.event_datetime
         )
 
         # Convert float values to Decimal for DynamoDB compatibility
@@ -132,8 +132,8 @@ class BetHelper:
         """
         response = self.table.get_item(
             Key={
-                "PK": f"ROOM#{room_id}",
-                "SK": f"POINT#{points_wagered}#USER#{user_id}#EVENT#{event_datetime}",
+                "PK": BetModel.create_pk(room_id),
+                "SK": BetModel.create_sk(points_wagered, user_id, event_datetime),
             }
         )
 
@@ -173,7 +173,7 @@ class BetHelper:
             response = self.table.query(
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
                 ExpressionAttributeValues={
-                    ":pk": f"ROOM#{room_id}",
+                    ":pk": BetModel.create_pk(room_id),
                     ":sk_prefix": "POINT#",
                 },
             )
@@ -243,7 +243,7 @@ class BetHelper:
             response = self.table.query(
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
                 ExpressionAttributeValues={
-                    ":pk": f"ROOM#{room_id}",
+                    ":pk": BetModel.create_pk(room_id),
                     ":sk_prefix": "POINT#",
                 },
             )
@@ -279,7 +279,7 @@ class BetHelper:
             response = self.table.query(
                 KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
                 ExpressionAttributeValues={
-                    ":pk": f"ROOM#{room_id}",
+                    ":pk": BetModel.create_pk(room_id),
                     ":sk_prefix": f"POINT#{points_wagered}#",
                 },
             )
