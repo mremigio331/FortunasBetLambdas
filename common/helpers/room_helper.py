@@ -76,8 +76,8 @@ class RoomHelper:
 
         # Create room item
         room_item = room.dict()
-        room_item["PK"] = f"ROOM#{room_id}"
-        room_item["SK"] = self.room_sk
+        room_item["PK"] = RoomModel.create_pk(room_id)
+        room_item["SK"] = RoomModel.create_sk()
 
         try:
             # Create room and membership
@@ -98,7 +98,7 @@ class RoomHelper:
 
             # Create audit record for room
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_id}",
+                pk=RoomModel.create_pk(room_id),
                 entity_type="Room",
                 action=AuditActions.CREATE.value,
                 user_id=owner_id,
@@ -123,7 +123,7 @@ class RoomHelper:
         """
         try:
             response = self.table.get_item(
-                Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk}
+                Key={"PK": RoomModel.create_pk(room_id), "SK": RoomModel.create_sk()}
             )
 
             if "Item" in response:
@@ -245,7 +245,7 @@ class RoomHelper:
 
             # Update the room
             response = self.table.update_item(
-                Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk},
+                Key={"PK": RoomModel.create_pk(room_id), "SK": RoomModel.create_sk()},
                 UpdateExpression=update_expr,
                 ExpressionAttributeNames=expr_attr_names if expr_attr_names else None,
                 ExpressionAttributeValues=expr_attr_values,
@@ -259,7 +259,7 @@ class RoomHelper:
 
             # Create audit record
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_id}",
+                pk=RoomModel.create_pk(room_id),
                 entity_type="Room",
                 action=AuditActions.UPDATE.value,
                 user_id=user_id,
@@ -421,7 +421,9 @@ class RoomHelper:
                 return False
 
             # Delete the room and all its memberships
-            self.table.delete_item(Key={"PK": f"ROOM#{room_id}", "SK": self.room_sk})
+            self.table.delete_item(
+                Key={"PK": RoomModel.create_pk(room_id), "SK": RoomModel.create_sk()}
+            )
 
             # Use MembershipHelper to delete all memberships
             deleted_count = self.membership_helper.delete_all_room_memberships(room_id)
@@ -431,7 +433,7 @@ class RoomHelper:
             # Create audit record for room deletion
             room_model = RoomModel(**room)
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_id}",
+                pk=RoomModel.create_pk(room_id),
                 entity_type="Room",
                 action=AuditActions.DELETE.value,
                 user_id=user_id,

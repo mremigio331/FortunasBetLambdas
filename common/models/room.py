@@ -17,6 +17,7 @@ allowed_sports = ["NFL", "MLB"]
 class RoomModel(BaseModel):
     # pk ROOM#{room_uuid}
     # sk ROOM
+
     room_name: str
     leagues: list[str]
     sport: str = "NFL"
@@ -78,3 +79,11 @@ class RoomModel(BaseModel):
         if start_date is not None and v <= start_date:
             raise InvalidDateRangeException(start_date=start_date, end_date=v)
         return v
+
+    @staticmethod
+    def create_pk(room_id: str) -> str:
+        return f"ROOM#{room_id}"
+
+    @staticmethod
+    def create_sk() -> str:
+        return "ROOM"
