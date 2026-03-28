@@ -47,13 +47,21 @@ class InvalidGameStatusException(BetException):
 
 
 class InvalidPointsWageredException(BetException):
-    """Raised when points wagered is not 1, 2, or 3."""
+    """Raised when points wagered is not valid for the room's sport."""
 
-    def __init__(self, points_wagered: int):
+    def __init__(self, points_wagered: int, sport_key: str = None, allowed_points=None):
         self.points_wagered = points_wagered
-        super().__init__(
-            f"Invalid points wagered: {points_wagered}. Must be 1, 2, or 3"
-        )
+        self.sport_key = sport_key
+        self.allowed_points = allowed_points
+        if sport_key and allowed_points:
+            allowed_str = ", ".join(str(p) for p in sorted(allowed_points))
+            super().__init__(
+                f"Invalid points wagered: {points_wagered} for {sport_key}. Allowed values: {allowed_str}"
+            )
+        else:
+            super().__init__(
+                f"Invalid points wagered: {points_wagered}. Must be 1, 2, or 3"
+            )
 
 
 class BetLockedException(BetException):
@@ -111,3 +119,42 @@ class DuplicateGameException(BetException):
     def __init__(self, game_id: str):
         self.game_id = game_id
         super().__init__(f"A bet already exists for game {game_id}")
+
+
+class WeeklyBetLimitExceeded(BetException):
+    """Raised when user exceeds max bets per week for the sport."""
+
+    def __init__(self, max_bets: int):
+        self.max_bets = max_bets
+        super().__init__(f"Maximum of {max_bets} bets per week exceeded")
+
+
+class PointValueLimitExceeded(BetException):
+    """Raised when user exceeds the per-point-value limit."""
+
+    def __init__(self, points: int, max_count: int):
+        self.points = points
+        self.max_count = max_count
+        super().__init__(
+            f"Maximum of {max_count} bet(s) with {points} point(s) per week exceeded"
+        )
+
+
+class GameLockedException(BetException):
+    """Raised when attempting to modify/remove a bet after game start."""
+
+    def __init__(self, game_id: str):
+        self.game_id = game_id
+        super().__init__(f"Game {game_id} has already started. Bet is locked.")
+
+
+class BetNotFoundException(BetException):
+    """Raised when attempting to update/remove a bet that doesn't exist."""
+
+    def __init__(self, room_id: str, user_id: str, game_id: str):
+        self.room_id = room_id
+        self.user_id = user_id
+        self.game_id = game_id
+        super().__init__(
+            f"No bet found for user {user_id} on game {game_id} in room {room_id}"
+        )

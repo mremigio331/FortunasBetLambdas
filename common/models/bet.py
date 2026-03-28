@@ -23,7 +23,7 @@ class GameBet(BaseModel):
     )
     total_value: Optional[float] = None  # The total at time of bet
 
-    # Points wagered (1, 2, or 3 points)
+    # Points wagered (NFL: 1, 2, 3; MLB: 1, 6)
     points_wagered: int
 
     # Bet result (calculated after game completion)
@@ -32,8 +32,8 @@ class GameBet(BaseModel):
 
     @validator("points_wagered")
     def validate_points_wagered(cls, v):
-        if v not in [1, 2, 3]:
-            raise ValueError("Points wagered must be 1, 2, or 3")
+        if v not in [1, 2, 3, 6]:
+            raise ValueError("Points wagered must be 1, 2, 3, or 6")
         return v
 
     @validator("team_choice")
@@ -83,7 +83,7 @@ class BetModel(BaseModel):
 
     # Bet details - now a single game bet instead of multiple
     game_bet: GameBet  # Single game bet
-    points_wagered: int  # 1, 2, or 3 points (now redundant with game_bet.points_wagered but kept for clarity)
+    points_wagered: int  # NFL: 1, 2, or 3 points; MLB: 1 or 6 points (redundant with game_bet.points_wagered but kept for SK generation)
     total_points_earned: Optional[float] = None
 
     # Submission info
@@ -94,6 +94,8 @@ class BetModel(BaseModel):
 
     @validator("points_wagered")
     def validate_points_consistency(cls, v, values):
+        if v not in [1, 2, 3, 6]:
+            raise ValueError("Points wagered must be 1, 2, 3, or 6")
         game_bet = values.get("game_bet")
         if game_bet and v != game_bet.points_wagered:
             raise ValueError("points_wagered must match game_bet.points_wagered")
