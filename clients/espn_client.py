@@ -61,6 +61,13 @@ class ESPNClient:
                 "winner": competitor.get("winner", False),
                 "records": competitor.get("records", []),
             }
+
+            # Extract probable starting pitcher if available
+            for probable in competitor.get("probables", []):
+                if probable.get("name") == "probableStartingPitcher":
+                    team_data["probableStartingPitcher"] = probable
+                    break
+
             if competitor.get("homeAway") == "home":
                 home_team = team_data
             else:
@@ -347,11 +354,16 @@ class ESPNClient:
             try:
                 game_data = self._parse_event(event)
 
-                # Attach odds from the parallel fetch
+                # Try odds from the parallel fetch first (core API)
                 event_odds = odds_map.get(event.get("id"), {})
                 odds_items = event_odds.get("items", [])
                 if odds_items:
                     self._attach_odds(game_data, odds_items[0])
+                else:
+                    # Fall back to inline odds from the scoreboard response
+                    inline_odds = event["competitions"][0].get("odds", [])
+                    if inline_odds:
+                        self._attach_odds(game_data, inline_odds[0])
 
                 results.append(game_data)
             except Exception as e:
