@@ -11,7 +11,7 @@ from api.decorators.exceptions_decorator import exceptions_decorator
 from api.decorators.jwt_decorator import jwt_required
 from common.helpers.membership_helper import MembershipHelper
 from common.helpers.room_helper import RoomHelper
-from common.models.membership import MembershipStatus, MembershipType
+from common.models.membership import MembershipModel, MembershipStatus, MembershipType
 from common.constants.services import API_SERVICE
 
 logger = Logger(service=API_SERVICE)
@@ -148,8 +148,8 @@ def change_member_status(request: Request, change_request: ChangeMemberStatusMod
         # Update the membership record
         response = membership_helper.table.update_item(
             Key={
-                "PK": f"ROOM#{change_request.room_id}",
-                "SK": f"MEMBERSHIP#{change_request.target_user_id}",
+                "PK": MembershipModel.create_pk(change_request.room_id),
+                "SK": MembershipModel.create_sk(change_request.target_user_id),
             },
             UpdateExpression=update_expression,
             ExpressionAttributeValues=expression_attribute_values,

@@ -21,6 +21,7 @@ class MembershipStatus(Enum):
 class MembershipModel(BaseModel):
     # pk ROOM#{room_uuid}
     # sk MEMBERSHIP#{user_uuid}
+
     admin_id: Optional[str] = None  # Admin who can approve/deny or who sent invitation
     requestor: (
         str  # For requests: the user requesting. For invitations: the admin inviting
@@ -46,3 +47,12 @@ class MembershipModel(BaseModel):
                 "invited_user should not be set for requests, admin, or member memberships"
             )
         return v
+
+    @staticmethod
+    def create_pk(room_id: str) -> str:
+        return f"ROOM#{room_id}"
+
+    @staticmethod
+    def create_sk(user_id: str, removed: bool = False) -> str:
+        prefix = "REMOVED#" if removed else ""
+        return f"{prefix}MEMBERSHIP#{user_id}"

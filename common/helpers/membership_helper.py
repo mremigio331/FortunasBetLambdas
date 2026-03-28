@@ -67,7 +67,7 @@ class MembershipHelper:
 
         # Create membership item - use by_alias and exclude_unset to get clean dict
         membership_item = membership.dict(by_alias=True, exclude_unset=True)
-        membership_item["PK"] = f"ROOM#{room_id}"
+        membership_item["PK"] = MembershipModel.create_pk(room_id)
         # Handle both enum and string values for comparison
         is_invitation = (
             membership_type == MembershipType.INVITATION
@@ -78,7 +78,7 @@ class MembershipHelper:
             or membership_type == MembershipType.INVITATION.value
         )
         target_user = invited_user_id if is_invitation else requestor_id
-        membership_item["SK"] = f"{self.membership_sk_prefix}{target_user}"
+        membership_item["SK"] = MembershipModel.create_sk(target_user)
 
         # Convert enum values to strings for DynamoDB (handle both enum and string inputs)
         membership_item["membership_type"] = (
@@ -108,7 +108,7 @@ class MembershipHelper:
             )
 
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_id}",
+                pk=MembershipModel.create_pk(room_id),
                 entity_type="Membership",
                 action=AuditActions.CREATE.value,
                 user_id=requestor_id,
@@ -139,8 +139,8 @@ class MembershipHelper:
         try:
             response = self.table.get_item(
                 Key={
-                    "PK": f"ROOM#{room_id}",
-                    "SK": f"{self.membership_sk_prefix}{user_id}",
+                    "PK": MembershipModel.create_pk(room_id),
+                    "SK": MembershipModel.create_sk(user_id),
                 }
             )
             return response.get("Item")
@@ -203,7 +203,7 @@ class MembershipHelper:
             response = self.table.scan(
                 FilterExpression="PK = :pk AND begins_with(SK, :sk_prefix) AND #status = :status AND membership_type = :type",
                 ExpressionAttributeValues={
-                    ":pk": f"ROOM#{room_id}",
+                    ":pk": MembershipModel.create_pk(room_id),
                     ":sk_prefix": self.membership_sk_prefix,
                     ":status": status.value,
                     ":type": membership_type.value,
@@ -331,8 +331,8 @@ class MembershipHelper:
 
             response = self.table.update_item(
                 Key={
-                    "PK": f"ROOM#{room_id}",
-                    "SK": f"{self.membership_sk_prefix}{target_user_id}",
+                    "PK": MembershipModel.create_pk(room_id),
+                    "SK": MembershipModel.create_sk(target_user_id),
                 },
                 UpdateExpression=update_expr,
                 ExpressionAttributeNames=expr_attr_names,
@@ -359,7 +359,7 @@ class MembershipHelper:
             # response["Attributes"] should already have string values from DynamoDB
 
             self.audit_action_helper.create_audit_record(
-                pk=f"ROOM#{room_id}",
+                pk=MembershipModel.create_pk(room_id),
                 entity_type="Membership",
                 action=AuditActions.UPDATE.value,
                 user_id=responding_user_id,
@@ -412,7 +412,7 @@ class MembershipHelper:
                 scan_kwargs = {
                     "FilterExpression": "PK = :pk AND begins_with(SK, :sk_prefix)",
                     "ExpressionAttributeValues": {
-                        ":pk": f"ROOM#{room_id}",
+                        ":pk": MembershipModel.create_pk(room_id),
                         ":sk_prefix": self.membership_sk_prefix,
                     },
                 }
@@ -461,7 +461,7 @@ class MembershipHelper:
                     "FilterExpression": "begins_with(PK, :pk_prefix) AND SK = :sk",
                     "ExpressionAttributeValues": {
                         ":pk_prefix": "ROOM#",
-                        ":sk": f"MEMBERSHIP#{user_id}",
+                        ":sk": MembershipModel.create_sk(user_id),
                     },
                 }
 
@@ -543,7 +543,7 @@ class MembershipHelper:
                 membership_response = self.table.scan(
                     FilterExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
                     ExpressionAttributeValues={
-                        ":pk": f"ROOM#{room_id}",
+                        ":pk": MembershipModel.create_pk(room_id),
                         ":sk_prefix": self.membership_sk_prefix,
                     },
                 )
