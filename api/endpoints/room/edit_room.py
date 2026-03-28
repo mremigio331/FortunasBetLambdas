@@ -12,6 +12,7 @@ from exceptions.user_exceptions import InvalidUserIdException
 import os
 from common.helpers.room_helper import RoomHelper
 from common.constants.services import API_SERVICE
+from exceptions.room_exceptions import SportChangeNotAllowedException
 
 logger = Logger(service=API_SERVICE)
 router = APIRouter()
@@ -73,12 +74,7 @@ def edit_room(request: Request, room_data: EditRoomRequest):
         )
 
     if "sport" in update_fields:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "message": "The sport field cannot be changed after room creation"
-            },
-        )
+        raise SportChangeNotAllowedException(room_id=room_data.room_id)
 
     try:
         room_helper = RoomHelper(request_id=request.state.request_id)

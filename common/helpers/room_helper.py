@@ -254,6 +254,9 @@ class RoomHelper:
 
             updated_room = response["Attributes"]
             updated_room["room_id"] = room_id
+            # Ensure sport field is present for backward compatibility with old rooms
+            if "sport" not in updated_room:
+                updated_room["sport"] = "NFL"
 
             self.logger.info(f"Updated room {room_id} by user {user_id}")
 

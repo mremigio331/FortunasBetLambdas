@@ -136,6 +136,20 @@ class InvalidSportException(Exception):
         super().__init__(self.message)
 
 
+class SportChangeNotAllowedException(Exception):
+    """Exception raised when attempting to change a room's sport after creation."""
+
+    def __init__(self, room_id: str = None):
+        if room_id:
+            message = f"The sport field cannot be changed after room creation for room '{room_id}'."
+        else:
+            message = "The sport field cannot be changed after room creation."
+
+        self.room_id = room_id
+        self.message = message
+        super().__init__(self.message)
+
+
 class EmptyAdminsListException(Exception):
     """Exception raised when admins list is empty or becomes empty."""
 

@@ -20,6 +20,7 @@ from exceptions.room_exceptions import (
     EmptyAdminsListException,
     MembershipAlreadyExistsException,
     InvalidSportException,
+    SportChangeNotAllowedException,
 )
 from exceptions.bet_exceptions import (
     DuplicateBetException,
@@ -77,6 +78,7 @@ def exceptions_decorator(func):
             InvalidDateRangeException,
             EmptyAdminsListException,
             InvalidSportException,
+            SportChangeNotAllowedException,
             InvalidGameStatusException,
             InvalidPointsWageredException,
             InvalidBetTypeException,
