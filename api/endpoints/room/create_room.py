@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from aws_lambda_powertools import Logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 
 from api.decorators.exceptions_decorator import exceptions_decorator
@@ -19,6 +19,7 @@ router = APIRouter()
 
 class CreateRoomRequest(BaseModel):
     room_name: str = Field(..., description="The name of the room")
+    sport: str = Field(..., description="Sport for this room: NFL or MLB")
     leagues: List[str] = Field(..., description="List of leagues for this room")
     start_date: int = Field(
         ..., description="Start date of the room/season as epoch timestamp"
@@ -32,6 +33,15 @@ class CreateRoomRequest(BaseModel):
     description: Optional[str] = Field(
         None, description="Optional description of the room"
     )
+
+    @validator("sport")
+    def validate_sport(cls, v):
+        allowed = ["NFL", "MLB"]
+        if v.upper() not in allowed:
+            raise ValueError(
+                f'Sport "{v}" is not allowed. Allowed sports are: {", ".join(allowed)}'
+            )
+        return v.upper()
 
 
 @router.post("/create_room", response_model=dict)
@@ -52,6 +62,7 @@ def create_room(request: Request, room_data: CreateRoomRequest):
 
         created_room = room_helper.create_room(
             room_name=room_data.room_name,
+            sport=room_data.sport,
             leagues=room_data.leagues,
             owner_id=user_id,
             public=room_data.public,

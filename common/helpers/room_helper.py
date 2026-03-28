@@ -47,6 +47,7 @@ class RoomHelper:
         owner_id: str,
         start_date: int,
         end_date: int,
+        sport: str = "NFL",
         public: bool = False,
         description: Optional[str] = None,
     ) -> dict:
@@ -63,6 +64,7 @@ class RoomHelper:
         room = RoomModel(
             room_name=room_name,
             leagues=leagues,
+            sport=sport,
             created_at=current_time,
             owner_id=owner_id,
             public=public,
@@ -130,6 +132,7 @@ class RoomHelper:
                     "room_id": room_id,
                     "room_name": item.get("room_name"),
                     "leagues": item.get("leagues"),
+                    "sport": item.get("sport", "NFL"),
                     "created_at": item.get("created_at"),
                     "owner_id": item.get("owner_id"),
                     "public": item.get("public", False),
@@ -288,7 +291,7 @@ class RoomHelper:
                         ":pk_prefix": "ROOM#",
                         ":sk": self.room_sk,
                     },
-                    "ProjectionExpression": "PK, room_name, description, #public, leagues, owner_id, admins",
+                    "ProjectionExpression": "PK, room_name, description, #public, leagues, sport, owner_id, admins",
                     "ExpressionAttributeNames": {
                         "#public": "public"  # 'public' is a reserved word
                     },
@@ -313,6 +316,7 @@ class RoomHelper:
                                 "description": item.get("description"),
                                 "public": item.get("public", False),
                                 "leagues": item.get("leagues", []),
+                                "sport": item.get("sport", "NFL"),
                                 "owner_id": item.get("owner_id"),
                                 "admins": item.get("admins", []),
                             }

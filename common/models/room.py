@@ -7,9 +7,11 @@ from exceptions.room_exceptions import (
     EmptyLeagueListException,
     InvalidDateRangeException,
     EmptyAdminsListException,
+    InvalidSportException,
 )
 
-allowed_leagues = ["NFL"]
+allowed_leagues = ["NFL", "MLB"]
+allowed_sports = ["NFL", "MLB"]
 
 
 class RoomModel(BaseModel):
@@ -17,6 +19,7 @@ class RoomModel(BaseModel):
     # sk ROOM
     room_name: str
     leagues: list[str]
+    sport: str = "NFL"
     created_at: int  # Epoch timestamp
     owner_id: str
     public: bool = False
@@ -40,6 +43,12 @@ class RoomModel(BaseModel):
                 )
 
         return v
+
+    @validator("sport")
+    def validate_sport(cls, v):
+        if v.upper() not in allowed_sports:
+            raise InvalidSportException(sport=v, allowed_sports=allowed_sports)
+        return v.upper()
 
     @validator("admins")
     def validate_admins(cls, v, values):

@@ -119,6 +119,23 @@ class InvalidDateRangeException(Exception):
         super().__init__(self.message)
 
 
+class InvalidSportException(Exception):
+    """Exception raised when an invalid sport is provided."""
+
+    def __init__(self, sport: str = None, allowed_sports: list = None):
+        if sport and allowed_sports:
+            message = f'Sport "{sport}" is not allowed. Allowed sports are: {", ".join(allowed_sports)}'
+        elif sport:
+            message = f'Sport "{sport}" is not allowed.'
+        else:
+            message = "Invalid sport provided."
+
+        self.sport = sport
+        self.allowed_sports = allowed_sports
+        self.message = message
+        super().__init__(self.message)
+
+
 class EmptyAdminsListException(Exception):
     """Exception raised when admins list is empty or becomes empty."""
 
