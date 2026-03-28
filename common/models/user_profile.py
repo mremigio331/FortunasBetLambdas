@@ -48,3 +48,11 @@ class UserProfileModel(BaseModel):
             raise UserNameTooLong(25)
         logging.info(f"Name validation passed: '{v}' (length: {len(v)})")
         return v.strip()
+
+    @staticmethod
+    def create_pk(user_id: str) -> str:
+        return f"USER#{user_id}"
+
+    @staticmethod
+    def create_sk() -> str:
+        return "USER_PROFILE"

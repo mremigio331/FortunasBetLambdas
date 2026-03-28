@@ -34,14 +34,14 @@ class UserProfileHelper:
             created_at=int(datetime.utcnow().timestamp()),  # Epoch timestamp
         )
         item = profile.dict()
-        item["PK"] = f"USER#{user_id}"
-        item["SK"] = self.sk
+        item["PK"] = UserProfileModel.create_pk(user_id)
+        item["SK"] = UserProfileModel.create_sk()
 
         try:
             self.table.put_item(Item=item)
             self.logger.info(f"Created user profile for {user_id}: {item}")
             self.audit_action_helper.create_audit_record(
-                pk=f"USER#{user_id}",
+                pk=UserProfileModel.create_pk(user_id),
                 entity_type="UserProfile",
                 action=AuditActions.CREATE.value,
                 user_id=user_id,
@@ -62,8 +62,8 @@ class UserProfileHelper:
             response = self.table.query(
                 KeyConditionExpression="PK = :pk AND SK = :sk",
                 ExpressionAttributeValues={
-                    ":pk": f"USER#{user_id}",
-                    ":sk": self.sk,
+                    ":pk": UserProfileModel.create_pk(user_id),
+                    ":sk": UserProfileModel.create_sk(),
                 },
             )
             items = response.get("Items", [])
@@ -129,12 +129,18 @@ class UserProfileHelper:
         try:
             # Fetch current profile for audit
             before_item = self.table.get_item(
-                Key={"PK": f"USER#{user_id}", "SK": self.sk}
+                Key={
+                    "PK": UserProfileModel.create_pk(user_id),
+                    "SK": UserProfileModel.create_sk(),
+                }
             ).get("Item")
             before = UserProfileModel(**before_item) if before_item else None
 
             response = self.table.update_item(
-                Key={"PK": f"USER#{user_id}", "SK": self.sk},
+                Key={
+                    "PK": UserProfileModel.create_pk(user_id),
+                    "SK": UserProfileModel.create_sk(),
+                },
                 UpdateExpression=update_expression,
                 ExpressionAttributeNames=expr_attr_names,
                 ExpressionAttributeValues=expr_attr_values,
@@ -148,7 +154,7 @@ class UserProfileHelper:
                 after = UserProfileModel(**attrs)
                 # Audit: before and after as UserProfileModel
                 self.audit_action_helper.create_audit_record(
-                    pk=f"USER#{user_id}",
+                    pk=UserProfileModel.create_pk(user_id),
                     entity_type="UserProfile",
                     user_id=user_id,
                     sk=self.audit_sk,
@@ -211,7 +217,10 @@ class UserProfileHelper:
             request_items = {
                 self.table.name: {
                     "Keys": [
-                        {"PK": {"S": f"USER#{user_id}"}, "SK": {"S": self.sk}}
+                        {
+                            "PK": {"S": UserProfileModel.create_pk(user_id)},
+                            "SK": {"S": UserProfileModel.create_sk()},
+                        }
                         for user_id in user_ids
                     ],
                     "ProjectionExpression": "PK,#n,color",
