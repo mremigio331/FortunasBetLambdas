@@ -20,8 +20,11 @@ from api.endpoints.bet import (
     create_bet,
     get_bets_for_room,
     get_current_nfl_week,
+    get_current_mlb_week,
     get_user_bets_for_current_week,
     get_bets_for_room_by_week,
+    update_bet,
+    remove_bet,
 )
 from api.endpoints.odds import (
     get_nfl_odds,
@@ -91,9 +94,12 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(get_mlb_weeks_in_range.router, prefix="/odds", tags=[ODDS])
 
     app.include_router(create_bet.router, prefix="/bet", tags=[BET])
+    app.include_router(update_bet.router, prefix="/bet", tags=[BET])
+    app.include_router(remove_bet.router, prefix="/bet", tags=[BET])
     app.include_router(get_bets_for_room.router, prefix="/bet", tags=[BET])
     app.include_router(get_bets_for_room_by_week.router, prefix="/bet", tags=[BET])
     app.include_router(get_current_nfl_week.router, prefix="/bet", tags=[BET])
+    app.include_router(get_current_mlb_week.router, prefix="/bet", tags=[BET])
     app.include_router(get_user_bets_for_current_week.router, prefix="/bet", tags=[BET])
 
     app.include_router(

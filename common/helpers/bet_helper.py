@@ -102,10 +102,20 @@ class BetHelper:
         # Convert float values to Decimal for DynamoDB compatibility
         item = self._convert_floats_to_decimals(item)
 
-        # Check if the user has already placed a bet on the same game ID
+        # Check if the user has already placed an active bet on the same game ID.
+        # get_user_game_ids_for_room excludes removed bets, so a user can
+        # re-bet on a game_id whose previous bet was soft-deleted (REMOVED# SK).
         user_game_ids = self.get_user_game_ids_for_room(bet.room_id, bet.user_id)
         if bet.game_id in user_game_ids:
             raise DuplicateGameException(bet.game_id)
+        else:
+            # Log when a user is re-betting on a previously removed game
+            removed_bets = self._get_removed_game_ids_for_user(bet.room_id, bet.user_id)
+            if bet.game_id in removed_bets:
+                self.logger.info(
+                    f"User {bet.user_id} re-betting on game {bet.game_id} in room {bet.room_id} "
+                    f"(previous bet was removed)"
+                )
 
         try:
             self.table.put_item(Item=item)
@@ -187,6 +197,13 @@ class BetHelper:
 
             # Check and grade each bet if needed, then enhance with game data
             graded_items = []
+            # Exclude removed bets
+            serializable_items = [
+                item
+                for item in serializable_items
+                if not item.get("SK", "").startswith("REMOVED#")
+            ]
+
             # Filter by week/season_type; derive via ESPN if attributes are missing or inconsistent
             filtered_items = []
             espn_client = ESPNClient(request_id=self.request_id)
@@ -235,6 +252,58 @@ class BetHelper:
             )
             raise
 
+    def get_all_bets_for_room_by_date_range(
+        self, room_id: str, week_start: int, week_end: int
+    ) -> List[dict]:
+        """
+        Fetch all bets for a room whose event_datetime falls within [week_start, week_end].
+        Used for MLB rooms where weeks are defined by epoch boundaries (Mon-Sun EST).
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                FilterExpression="#event_dt BETWEEN :ws AND :we",
+                ExpressionAttributeValues={
+                    ":pk": BetModel.create_pk(room_id),
+                    ":sk_prefix": "POINT#",
+                    ":ws": week_start,
+                    ":we": week_end,
+                },
+                ExpressionAttributeNames={"#event_dt": "event_datetime"},
+            )
+
+            items = response.get("Items", [])
+            serializable_items = [
+                self._convert_decimals_to_floats(item) for item in items
+            ]
+            # Exclude removed bets
+            serializable_items = [
+                item
+                for item in serializable_items
+                if not item.get("SK", "").startswith("REMOVED#")
+            ]
+
+            graded_items = []
+            for item in serializable_items:
+                graded_bet = self.check_and_grade_bet(item)
+                if graded_bet:
+                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
+                    graded_items.append(enhanced_bet)
+                else:
+                    enhanced_bet = self._enhance_bet_with_game_data(item)
+                    graded_items.append(enhanced_bet)
+
+            self.logger.info(
+                f"Retrieved {len(graded_items)} bets for room {room_id} "
+                f"in date range {week_start}-{week_end}"
+            )
+            return graded_items
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching bets for room {room_id} by date range: {e}"
+            )
+            raise
+
     def get_all_bets_for_room(self, room_id: str) -> List[dict]:
         """
         Fetch all bets for a specific room, ordered by point value then user.
@@ -252,6 +321,13 @@ class BetHelper:
             # Convert Decimal values back to float for JSON serialization
             serializable_items = [
                 self._convert_decimals_to_floats(item) for item in items
+            ]
+
+            # Exclude removed bets
+            serializable_items = [
+                item
+                for item in serializable_items
+                if not item.get("SK", "").startswith("REMOVED#")
             ]
 
             # Check and grade each bet if needed
@@ -288,6 +364,13 @@ class BetHelper:
             # Convert Decimal values back to float for JSON serialization
             serializable_items = [
                 self._convert_decimals_to_floats(item) for item in items
+            ]
+
+            # Exclude removed bets
+            serializable_items = [
+                item
+                for item in serializable_items
+                if not item.get("SK", "").startswith("REMOVED#")
             ]
 
             # Check and grade each bet if needed
@@ -330,10 +413,13 @@ class BetHelper:
                 self._convert_decimals_to_floats(item) for item in items
             ]
 
-            # Filter for user_id in SK
+            # Filter for user_id in SK, excluding removed bets
             user_id_str = f"USER#{user_id}"
             filtered_items = [
-                item for item in serializable_items if user_id_str in item.get("SK", "")
+                item
+                for item in serializable_items
+                if user_id_str in item.get("SK", "")
+                and not item.get("SK", "").startswith("REMOVED#")
             ]
 
             # Check and grade each bet if needed
@@ -354,6 +440,102 @@ class BetHelper:
         except ClientError as e:
             self.logger.error(
                 f"Error fetching bets for user {user_id} in room {room_id}: {e}"
+            )
+            raise
+
+    def get_removed_bets_for_user(self, room_id: str, user_id: str) -> List[dict]:
+        """
+        Get all removed bets for a specific user in a room (history view).
+
+        Queries bets with the REMOVED# SK prefix and filters by user_id.
+
+        Args:
+            room_id: The room ID.
+            user_id: The user ID.
+
+        Returns:
+            List of removed bet dicts with a 'status' field set to 'removed'.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": "REMOVED#",
+                },
+            )
+            items = response.get("Items", [])
+
+            serializable_items = [
+                self._convert_decimals_to_floats(item) for item in items
+            ]
+
+            user_id_str = f"USER#{user_id}"
+            filtered_items = [
+                item for item in serializable_items if user_id_str in item.get("SK", "")
+            ]
+
+            for item in filtered_items:
+                item["status"] = "removed"
+
+            self.logger.info(
+                f"Retrieved {len(filtered_items)} removed bets for user {user_id} in room {room_id}"
+            )
+            return filtered_items
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching removed bets for user {user_id} in room {room_id}: {e}"
+            )
+            raise
+
+    def find_user_bet_by_game_id(
+        self, room_id: str, user_id: str, game_id: str
+    ) -> Optional[dict]:
+        """
+        Find a user's active (non-removed) bet on a specific game in a room.
+
+        Queries all POINT# bets for the room, filters by user_id and game_id,
+        and excludes removed bets. Returns the raw DynamoDB item without
+        grading or ESPN enhancement (suitable for update/delete operations).
+
+        Args:
+            room_id: The room ID.
+            user_id: The user ID.
+            game_id: The ESPN game/event ID.
+
+        Returns:
+            The bet item dict if found, or None.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": "POINT#",
+                },
+            )
+            items = response.get("Items", [])
+
+            user_id_str = f"USER#{user_id}"
+            for item in items:
+                sk = item.get("SK", "")
+                if (
+                    user_id_str in sk
+                    and not sk.startswith("REMOVED#")
+                    and item.get("game_id") == game_id
+                ):
+                    self.logger.info(
+                        f"Found existing bet for user {user_id} on game {game_id} in room {room_id}"
+                    )
+                    return self._convert_decimals_to_floats(item)
+
+            self.logger.info(
+                f"No active bet found for user {user_id} on game {game_id} in room {room_id}"
+            )
+            return None
+        except ClientError as e:
+            self.logger.error(
+                f"Error finding bet for user {user_id} on game {game_id} in room {room_id}: {e}"
             )
             raise
 
@@ -378,12 +560,14 @@ class BetHelper:
             )
             items = response.get("Items", [])
 
-            # Filter items for the specific user and extract game IDs
+            # Filter items for the specific user and extract game IDs, excluding removed bets
             user_id_str = f"USER#{user_id}"
             game_ids = [
                 item["game_id"]
                 for item in items
-                if user_id_str in item.get("SK", "") and "game_id" in item
+                if user_id_str in item.get("SK", "")
+                and not item.get("SK", "").startswith("REMOVED#")
+                and "game_id" in item
             ]
 
             self.logger.info(
@@ -395,6 +579,40 @@ class BetHelper:
                 f"Error fetching game IDs for user {user_id} in room {room_id}: {e}"
             )
             raise
+
+    def _get_removed_game_ids_for_user(self, room_id: str, user_id: str) -> List[str]:
+        """
+        Get game IDs from removed bets for a user in a room.
+
+        Used to detect when a user is re-betting on a game whose previous bet
+        was soft-deleted.
+
+        Args:
+            room_id: The room ID.
+            user_id: The user ID.
+
+        Returns:
+            List of game IDs from removed bets.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": "REMOVED#",
+                },
+            )
+            items = response.get("Items", [])
+
+            user_id_str = f"USER#{user_id}"
+            game_ids = [
+                item["game_id"]
+                for item in items
+                if user_id_str in item.get("SK", "") and "game_id" in item
+            ]
+            return game_ids
+        except ClientError:
+            return []
 
     def validate_week_boundary_bet(
         self,
@@ -457,6 +675,11 @@ class BetHelper:
             )
 
             existing_bets = response.get("Items", [])
+
+            # Exclude removed bets from duplicate check
+            existing_bets = [
+                b for b in existing_bets if not b.get("SK", "").startswith("REMOVED#")
+            ]
 
             if existing_bets:
                 self.logger.warning(

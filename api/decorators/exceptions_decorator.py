@@ -26,12 +26,16 @@ from exceptions.bet_exceptions import (
     DuplicateBetException,
     DuplicateGameException,
     BetNotFound,
+    BetNotFoundException,
     InvalidGameStatusException,
     InvalidPointsWageredException,
     InvalidBetTypeException,
     BetLockedException,
     UserProfileNotFoundException,
     GameDataNotFoundException,
+    GameLockedException,
+    WeeklyBetLimitExceeded,
+    PointValueLimitExceeded,
 )
 from exceptions.bet_exceptions import OddsSnapshotMismatch
 from fastapi.responses import JSONResponse
@@ -70,6 +74,29 @@ def exceptions_decorator(func):
         except UserNameTooLong as exc:
             return JSONResponse(
                 content={"message": str(exc) or "User name is too long."},
+                status_code=400,
+            )
+        except BetNotFoundException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Bet not found.",
+                    "room_id": exc.room_id,
+                    "user_id": exc.user_id,
+                    "game_id": exc.game_id,
+                },
+                status_code=404,
+            )
+        except GameLockedException as exc:
+            return JSONResponse(
+                content={
+                    "message": str(exc) or "Game has already started.",
+                    "game_id": exc.game_id,
+                },
+                status_code=400,
+            )
+        except (WeeklyBetLimitExceeded, PointValueLimitExceeded) as exc:
+            return JSONResponse(
+                content={"message": str(exc) or "Bet limit exceeded."},
                 status_code=400,
             )
         except (

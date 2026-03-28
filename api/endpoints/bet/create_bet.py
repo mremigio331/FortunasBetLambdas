@@ -10,7 +10,10 @@ from datetime import datetime
 from api.decorators.exceptions_decorator import exceptions_decorator
 from common.helpers.bet_helper import BetHelper
 from common.helpers.membership_helper import MembershipHelper
+from common.helpers.room_helper import RoomHelper
+from common.helpers.week_helper import WeekHelper
 from common.models.bet import BetModel, GameBet
+from common.validators.bet_validator import BetValidator
 from clients.espn_client import ESPNClient
 from exceptions.bet_exceptions import (
     DuplicateBetException,
@@ -51,11 +54,11 @@ class CreateGameBetRequest(BaseModel):
     )
 
     # Points wagered
-    points_wagered: int = Field(..., description="Points to wager (1, 2, or 3)")
+    points_wagered: int = Field(..., description="Points to wager on this game")
 
     @validator("points_wagered")
     def validate_points_wagered(cls, v):
-        if v not in [1, 2, 3]:
+        if v not in [1, 2, 3, 6]:
             raise InvalidPointsWageredException(v)
         return v
 
@@ -120,8 +123,9 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
     """
     Create a new bet for a user in a room.
 
-    Each user can only make one bet per point value (1, 2, 3) in each room.
-    Validates that the bet doesn't already exist and that the game allows betting.
+    Validates sport-specific rules (point values, weekly limits) based on the room's sport.
+    NFL rooms: 3 bets per week, one each at 1, 2, 3 points.
+    MLB rooms: up to 5 bets per week, max 4 at 1pt, max 1 at 6pt.
     """
     logger.append_keys(request_id=request.state.request_id)
     logger.info(f"Create bet request: {bet_request.dict()}")
@@ -153,6 +157,51 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
         return JSONResponse(
             status_code=403,
             content={"error": "User membership is not approved"},
+        )
+
+    # Look up room to get sport for sport-specific validation
+    room_helper = RoomHelper(request_id=request.state.request_id)
+    room = room_helper.get_room(bet_request.room_id)
+    if not room:
+        logger.warning(f"Room {bet_request.room_id} not found")
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Room {bet_request.room_id} not found"},
+        )
+
+    room_sport = room.get("sport", "NFL")
+    logger.info(f"Room {bet_request.room_id} sport: {room_sport}")
+
+    # Validate point value against sport-specific rules
+    bet_validator = BetValidator(
+        sport_key=room_sport, request_id=request.state.request_id
+    )
+    bet_validator.validate_point_value(bet_request.game_bet.points_wagered)
+
+    # Get week boundaries for this event to check weekly limits
+    week_helper = WeekHelper(request_id=request.state.request_id)
+    week_boundary = week_helper.get_week_boundary(
+        bet_request.sport,
+        bet_request.league,
+        bet_request.event_datetime,
+        bet_request.game_id,
+    )
+
+    if week_boundary:
+        week_start, week_end = week_boundary
+        # Query existing bets for this user in this room within the week
+        bet_helper = BetHelper(request_id=request.state.request_id)
+        existing_bets = bet_helper.get_user_bets_for_room(
+            room_id=bet_request.room_id, user_id=user_id
+        )
+        # Filter to bets within the current week boundary
+        week_bets = [
+            b
+            for b in existing_bets
+            if week_start <= b.get("event_datetime", 0) <= week_end
+        ]
+        bet_validator.validate_weekly_limits(
+            week_bets, bet_request.game_bet.points_wagered
         )
 
     # Initialize ESPN client to validate game status
