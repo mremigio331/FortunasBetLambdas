@@ -2,6 +2,7 @@ from aws_lambda_powertools import Logger
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from common.helpers.nfl_helper import NFLHelper
+from common.helpers.mlb_helper import MLBHelper
 from clients.espn_client import ESPNClient
 from datetime import datetime, timezone
 from dateutil.parser import isoparse
@@ -41,9 +42,12 @@ class WeekHelper:
                 league_lower, event_datetime, game_id
             )
 
+        # MLB uses Monday-Sunday EST week boundaries
+        if sport_lower == "baseball" and league_lower == "mlb":
+            return self._get_mlb_week_boundary(event_datetime)
+
         # Other sports use calendar weeks
-        else:
-            return self._get_calendar_week_boundary(event_datetime)
+        return self._get_calendar_week_boundary(event_datetime)
 
     def _get_football_week_boundary(
         self, league: str, event_datetime: int, game_id: str = None
@@ -68,6 +72,19 @@ class WeekHelper:
         else:
             self.logger.warning(f"Unknown football league: {league}")
             return None
+
+    def _get_mlb_week_boundary(self, event_datetime: int) -> Tuple[int, int]:
+        """
+        Get MLB week boundaries using MLBHelper (Monday-Sunday EST).
+
+        Args:
+            event_datetime: Event timestamp in epoch seconds
+
+        Returns:
+            tuple: (week_start_epoch, week_end_epoch)
+        """
+        mlb_helper = MLBHelper(request_id=self.request_id)
+        return mlb_helper.get_mlb_week_boundary(event_datetime)
 
     def _get_nfl_week_boundary(
         self, event_datetime: int, game_id: str = None
