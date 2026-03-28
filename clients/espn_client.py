@@ -2,6 +2,7 @@ from aws_lambda_powertools import Logger
 from aws_lambda_powertools.metrics import Metrics, MetricUnit
 import boto3
 from botocore.exceptions import ClientError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import json
 import time
@@ -34,6 +35,107 @@ class ESPNClient:
             service=API_SERVICE,
         )
 
+    def _parse_event(self, event: dict) -> dict:
+        """
+        Parse an ESPN scoreboard event into a standardised game_data dict.
+        Works for both NFL and MLB events since the scoreboard schema is
+        identical across sports on the site API.
+
+        Returns a game_data dict with teams, status, venue, and null odds
+        placeholders ready to be filled by _attach_odds.
+        """
+        comp = event["competitions"][0]
+        competitors = comp.get("competitors", [])
+
+        home_team = None
+        away_team = None
+
+        for competitor in competitors:
+            team_info = competitor.get("team", {})
+            team_data = {
+                "id": team_info.get("id"),
+                "name": team_info.get("displayName"),
+                "abbreviation": team_info.get("abbreviation"),
+                "logo": team_info.get("logo"),
+                "score": competitor.get("score"),
+                "winner": competitor.get("winner", False),
+                "records": competitor.get("records", []),
+            }
+            if competitor.get("homeAway") == "home":
+                home_team = team_data
+            else:
+                away_team = team_data
+
+        status = comp.get("status", {})
+        game_status = {
+            "type": status.get("type", {}),
+            "period": status.get("period", 0),
+            "displayClock": status.get("displayClock", ""),
+            "completed": status.get("type", {}).get("completed", False),
+            "state": status.get("type", {}).get("state", "pre"),
+            "detail": status.get("type", {}).get("detail", ""),
+            "shortDetail": status.get("type", {}).get("shortDetail", ""),
+        }
+
+        venue = comp.get("venue", {})
+        venue_info = {
+            "name": venue.get("fullName", ""),
+            "city": venue.get("address", {}).get("city", ""),
+            "state": venue.get("address", {}).get("state", ""),
+            "indoor": venue.get("indoor", False),
+        }
+
+        return {
+            "matchup": event["name"],
+            "date": event["date"],
+            "game_id": event.get("id"),
+            "teams": {"home": home_team, "away": away_team},
+            "status": game_status,
+            "venue": venue_info,
+            "spread": None,
+            "spreadDetails": None,
+            "favoredTeam": None,
+            "overUnder": None,
+            "homeTeamOdds": None,
+            "awayTeamOdds": None,
+        }
+
+    def _attach_odds(self, game_data: dict, odds_data: dict) -> None:
+        """
+        Mutate *game_data* in-place by extracting spread, over/under, and
+        moneyline values from an ESPN odds payload.
+
+        *odds_data* is a single odds item (the first element from either
+        ``comp["odds"]`` for inline scoreboard odds or
+        ``odds_response["items"]`` for the separate odds endpoint).
+        """
+        spread_value = odds_data.get("spread")
+        spread_details = odds_data.get("details")
+
+        if spread_value is not None:
+            game_data["spread"] = spread_value
+            game_data["spreadDetails"] = spread_details
+
+            if spread_value < 0:
+                game_data["favoredTeam"] = "home"
+            elif spread_value > 0:
+                game_data["favoredTeam"] = "away"
+            else:
+                game_data["favoredTeam"] = "even"
+
+        game_data["overUnder"] = odds_data.get("overUnder")
+
+        home_odds = odds_data.get("homeTeamOdds", {})
+        away_odds = odds_data.get("awayTeamOdds", {})
+        game_data["homeTeamOdds"] = {
+            "moneyLine": home_odds.get("moneyLine"),
+            "spreadOdds": home_odds.get("spreadOdds"),
+        }
+        game_data["awayTeamOdds"] = {
+            "moneyLine": away_odds.get("moneyLine"),
+            "spreadOdds": away_odds.get("spreadOdds"),
+        }
+
     def get_nfl_week_odds(self, week: int, year: int, season_type: int = 2):
         """
         Returns Total lines for all NFL games in the given week/year.
@@ -57,102 +159,11 @@ class ESPNClient:
             results = []
             for event in data.get("events", []):
                 try:
-                    comp = event["competitions"][0]
-                    odds = comp.get("odds", [])
-                    competitors = comp.get("competitors", [])
+                    game_data = self._parse_event(event)
 
-                    # Extract team information
-                    home_team = None
-                    away_team = None
-
-                    for competitor in competitors:
-                        team_info = competitor.get("team", {})
-                        team_data = {
-                            "id": team_info.get("id"),
-                            "name": team_info.get("displayName"),
-                            "abbreviation": team_info.get("abbreviation"),
-                            "logo": team_info.get("logo"),
-                            "score": competitor.get("score"),
-                            "winner": competitor.get("winner", False),
-                            "records": competitor.get("records", []),
-                        }
-
-                        if competitor.get("homeAway") == "home":
-                            home_team = team_data
-                        else:
-                            away_team = team_data
-
-                    # Extract game status information
-                    status = comp.get("status", {})
-                    game_status = {
-                        "type": status.get("type", {}),
-                        "period": status.get("period", 0),
-                        "displayClock": status.get("displayClock", ""),
-                        "completed": status.get("type", {}).get("completed", False),
-                        "state": status.get("type", {}).get("state", "pre"),
-                        "detail": status.get("type", {}).get("detail", ""),
-                        "shortDetail": status.get("type", {}).get("shortDetail", ""),
-                    }
-
-                    # Extract venue information
-                    venue = comp.get("venue", {})
-                    venue_info = {
-                        "name": venue.get("fullName", ""),
-                        "city": venue.get("address", {}).get("city", ""),
-                        "state": venue.get("address", {}).get("state", ""),
-                        "indoor": venue.get("indoor", False),
-                    }
-
-                    game_data = {
-                        "matchup": event["name"],
-                        "date": event["date"],
-                        "game_id": event.get("id"),
-                        "teams": {"home": home_team, "away": away_team},
-                        "status": game_status,
-                        "venue": venue_info,
-                        "spread": None,
-                        "spreadDetails": None,
-                        "favoredTeam": None,
-                        "overUnder": None,
-                        "homeTeamOdds": None,
-                        "awayTeamOdds": None,
-                    }
-
+                    odds = event["competitions"][0].get("odds", [])
                     if odds and len(odds) > 0:
-                        odds_data = odds[0]
-
-                        # Get the spread (this is what you want for betting)
-                        spread_value = odds_data.get("spread")
-                        spread_details = odds_data.get("details")
-
-                        if spread_value is not None:
-                            game_data["spread"] = spread_value
-                            game_data["spreadDetails"] = spread_details
-
-                            # Determine favored team based on spread
-                            # Negative spread means home team is favored
-                            if spread_value < 0:
-                                game_data["favoredTeam"] = "home"
-                            elif spread_value > 0:
-                                game_data["favoredTeam"] = "away"
-                            else:
-                                game_data["favoredTeam"] = "even"  # Pick 'em game
-
-                        # Keep Total for reference
-                        game_data["overUnder"] = odds_data.get("overUnder")
-
-                        # Extract home and away team odds
-                        home_odds = odds_data.get("homeTeamOdds", {})
-                        away_odds = odds_data.get("awayTeamOdds", {})
-
-                        game_data["homeTeamOdds"] = {
-                            "moneyLine": home_odds.get("moneyLine"),
-                            "spreadOdds": home_odds.get("spreadOdds"),
-                        }
-                        game_data["awayTeamOdds"] = {
-                            "moneyLine": away_odds.get("moneyLine"),
-                            "spreadOdds": away_odds.get("spreadOdds"),
-                        }
+                        self._attach_odds(game_data, odds[0])
 
                     results.append(game_data)
                 except Exception as e:
@@ -211,6 +222,143 @@ class ESPNClient:
             self.metrics.flush_metrics()
             self.logger.error(f"Request failed: {e}")
             return {}
+
+    def get_mlb_scoreboard(self, date: str):
+        """
+        Returns MLB scoreboard data for a specific date.
+
+        Args:
+            date: Date string in YYYYMMDD format (e.g., '20250920').
+
+        Returns:
+            dict: MLB scoreboard data including events, teams, and scores
+        """
+        self.metrics.add_dimension(
+            name=ENDPOINT, value="/sports/baseball/mlb/scoreboard"
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value="MLB")
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            url = (
+                "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
+            )
+            params = {"dates": date}
+
+            self.logger.info(
+                f"Fetching MLB scoreboard from: {url} with params: {params}"
+            )
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return data
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Request failed: {e}")
+            return {}
+
+    def get_mlb_game_odds(self, event_id: str):
+        """
+        Returns odds data for a specific MLB game event.
+
+        Args:
+            event_id: The ESPN event ID for the MLB game.
+
+        Returns:
+            dict: Odds data including spreads, over/under, and moneyline values.
+        """
+        self.metrics.add_dimension(
+            name=ENDPOINT,
+            value=f"/sports/baseball/mlb/events/{event_id}/odds",
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value="MLB")
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            url = (
+                f"https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb"
+                f"/events/{event_id}/competitions/{event_id}/odds"
+            )
+            params = {"lang": "en", "region": "us"}
+
+            self.logger.info(
+                f"Fetching MLB game odds from: {url} with params: {params}"
+            )
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return data
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Failed to fetch MLB odds for event {event_id}: {e}")
+            return {}
+
+    def get_mlb_scoreboard_with_odds(self, date: str):
+        """
+        Fetches MLB scoreboard for a date, then fetches odds for each game
+        in parallel. Returns a list of game_data dicts matching the format
+        used by get_nfl_week_odds.
+
+        Args:
+            date: Date string in YYYYMMDD format (e.g., '20250920').
+
+        Returns:
+            list[dict]: List of game data dicts with odds attached.
+        """
+        scoreboard = self.get_mlb_scoreboard(date)
+        events = scoreboard.get("events", [])
+        if not events:
+            return []
+
+        # Fetch odds for all games in parallel
+        odds_map = {}
+
+        def fetch_odds(event_id):
+            return event_id, self.get_mlb_game_odds(event_id)
+
+        with ThreadPoolExecutor(max_workers=min(len(events), 10)) as executor:
+            futures = {
+                executor.submit(fetch_odds, event["id"]): event["id"]
+                for event in events
+                if event.get("id")
+            }
+            for future in as_completed(futures):
+                try:
+                    event_id, odds_data = future.result()
+                    odds_map[event_id] = odds_data
+                except Exception as e:
+                    event_id = futures[future]
+                    self.logger.warning(
+                        f"Failed to fetch odds for MLB event {event_id}: {e}"
+                    )
+
+        results = []
+        for event in events:
+            try:
+                game_data = self._parse_event(event)
+
+                # Attach odds from the parallel fetch
+                event_odds = odds_map.get(event.get("id"), {})
+                odds_items = event_odds.get("items", [])
+                if odds_items:
+                    self._attach_odds(game_data, odds_items[0])
+
+                results.append(game_data)
+            except Exception as e:
+                self.logger.warning(f"Failed to parse MLB event {event.get('id')}: {e}")
+                continue
+
+        return results
 
     def get_nfl_schedule(self, year: int):
         """
