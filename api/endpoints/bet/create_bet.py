@@ -226,6 +226,18 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
     if current_status not in allowed_statuses:
         raise InvalidGameStatusException(current_status, "STATUS_SCHEDULED")
 
+    # Validate spread is set for spread bets (0.0 means not yet available)
+    if bet_request.game_bet.bet_type == "spread":
+        odds_spread = bet_request.odds_snapshot.get("spread")
+        if odds_spread is not None and float(odds_spread) == 0.0:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Spread not set",
+                    "message": "The spread for this game has not been set yet. Try a total bet or wait for the spread to be published.",
+                },
+            )
+
     # Validate odds using BetHelper
     bet_helper = BetHelper(request_id=request.state.request_id)
     if not bet_helper.validate_odds_snapshot(bet_request.odds_snapshot, event_data):

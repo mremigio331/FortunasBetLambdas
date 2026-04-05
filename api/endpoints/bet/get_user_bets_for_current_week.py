@@ -95,7 +95,7 @@ def get_user_bets_for_current_week(
     Monday-Sunday EST boundaries for MLB rooms.
     """
     logger.append_keys(request_id=request.state.request_id)
-    user_id = getattr(request.state, "user_token", None)
+    user_id = request.state.user_id
 
     membership_helper = MembershipHelper(request_id=request.state.request_id)
     rooms = membership_helper.get_all_membership_requests_for_user(user_id=user_id)

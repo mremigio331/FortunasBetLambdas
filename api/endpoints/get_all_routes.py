@@ -1,4 +1,5 @@
 from api.endpoints.fortunas_bet import home
+from api.endpoints.home import get_home_data
 from api.endpoints.user import get_requestors_profile, update_user_profile
 from api.endpoints.room import (
     create_room,
@@ -6,6 +7,8 @@ from api.endpoints.room import (
     get_room,
     get_all_rooms,
     get_valid_leagues,
+    get_room_leaderboard,
+    get_room_bets_all,
 )
 from api.endpoints.membership import (
     get_all_membership_request,
@@ -23,6 +26,7 @@ from api.endpoints.bet import (
     get_current_mlb_week,
     get_user_bets_for_current_week,
     get_bets_for_room_by_week,
+    get_removed_bets,
     update_bet,
     remove_bet,
 )
@@ -56,6 +60,7 @@ def get_all_routes(app: FastAPI) -> FastAPI:
         FastAPI: The updated FastAPI application instance with all routes registered.
     """
     app.include_router(home.router, prefix="/fortunasbet", tags=[HOME])
+    app.include_router(get_home_data.router, prefix="/home", tags=[HOME])
 
     app.include_router(
         get_requestors_profile.router, prefix="/user", tags=[USER_PROFILE]
@@ -67,6 +72,8 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(get_all_rooms.router, prefix="/room", tags=[ROOM])
     app.include_router(get_valid_leagues.router, prefix="/room", tags=[ROOM])
     app.include_router(get_room.router, prefix="/room", tags=[ROOM])
+    app.include_router(get_room_leaderboard.router, prefix="/room", tags=[ROOM])
+    app.include_router(get_room_bets_all.router, prefix="/room", tags=[ROOM])
 
     app.include_router(
         get_all_membership_request.router, prefix="/membership", tags=[MEMBERSHIP]
@@ -98,6 +105,7 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(remove_bet.router, prefix="/bet", tags=[BET])
     app.include_router(get_bets_for_room.router, prefix="/bet", tags=[BET])
     app.include_router(get_bets_for_room_by_week.router, prefix="/bet", tags=[BET])
+    app.include_router(get_removed_bets.router, prefix="/bet", tags=[BET])
     app.include_router(get_current_nfl_week.router, prefix="/bet", tags=[BET])
     app.include_router(get_current_mlb_week.router, prefix="/bet", tags=[BET])
     app.include_router(get_user_bets_for_current_week.router, prefix="/bet", tags=[BET])

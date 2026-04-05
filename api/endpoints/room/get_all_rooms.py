@@ -20,13 +20,17 @@ router = APIRouter()
 @router.get("/get_all_rooms", response_model=dict)
 @jwt_required()
 @exceptions_decorator
-def get_all_rooms(request: Request):
+def get_all_rooms(request: Request, active: bool = True):
     """
     Get all rooms with basic information and user's membership status for each room.
     Returns a list of room summaries with membership_status field.
+
+    Query params:
+        active: If True (default), only return rooms that are not Archived or Completed.
+                If False, return all rooms.
     """
     logger.append_keys(request_id=request.state.request_id)
-    logger.info("Getting all rooms with membership status")
+    logger.info(f"Getting all rooms with membership status (active={active})")
 
     user_id = request.state.user_id
     logger.info(f"user_id from JWT: {user_id}")
@@ -76,15 +80,25 @@ def get_all_rooms(request: Request):
             room_dict["membership_status"] = membership_status
             rooms_with_membership.append(room_dict)
 
+        # Filter out inactive rooms if active=True
+        if active:
+            rooms_with_membership = [
+                r
+                for r in rooms_with_membership
+                if r.get("status") not in ("Archived", "Completed")
+            ]
+
         rooms_dict = jsonable_encoder(rooms_with_membership)
-        logger.info(f"Successfully retrieved {len(rooms)} rooms with membership status")
+        logger.info(
+            f"Successfully retrieved {len(rooms_with_membership)} rooms with membership status (active={active})"
+        )
 
         return JSONResponse(
             status_code=200,
             content={
-                "message": f"Retrieved {len(rooms)} rooms successfully",
+                "message": f"Retrieved {len(rooms_with_membership)} rooms successfully",
                 "rooms": rooms_dict,
-                "count": len(rooms),
+                "count": len(rooms_with_membership),
             },
         )
 

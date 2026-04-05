@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 from api.decorators.exceptions_decorator import exceptions_decorator
 from api.decorators.jwt_decorator import jwt_required
 from common.helpers.membership_helper import MembershipHelper
+from common.helpers.room_helper import RoomHelper
 from common.constants.services import API_SERVICE
 
 logger = Logger(service=API_SERVICE)
@@ -28,6 +29,7 @@ def get_user_membership_requests(request: Request):
 
     try:
         membership_helper = MembershipHelper(request_id=request.state.request_id)
+        room_helper = RoomHelper(request_id=request.state.request_id)
 
         # Get all membership requests for the user
         membership_requests = membership_helper.get_all_membership_requests_for_user(
@@ -48,10 +50,24 @@ def get_user_membership_requests(request: Request):
                 if pk_match:
                     room_id = pk_match
 
+            # Fetch room record to get room status
+            room_status = "Active"
+            room_sport = "NFL"
+            if room_id:
+                try:
+                    room_data = room_helper.get_room(room_id)
+                    if room_data:
+                        room_status = room_data.get("status", "Active")
+                        room_sport = room_data.get("sport", "NFL")
+                except Exception as e:
+                    logger.warning(f"Could not fetch room status for {room_id}: {e}")
+
             # Create cleaned request object
             cleaned_request = {
                 "room_id": room_id,
                 "status": request.get("status"),
+                "room_status": room_status,
+                "room_sport": room_sport,
                 "created_at": request.get("created_at"),
                 "requestor": request.get("requestor"),
                 "room_name": request.get("room_name"),

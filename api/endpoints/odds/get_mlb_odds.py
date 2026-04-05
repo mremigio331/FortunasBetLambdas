@@ -27,12 +27,6 @@ def get_mlb_odds(
 ):
     """
     Get MLB games with odds for a specific date.
-
-    Fetches the MLB scoreboard for the given date, then fetches odds
-    for each game in parallel and attaches them to the response.
-
-    Parameters:
-    - date: Date string in YYYYMMDD format
     """
     logger.append_keys(request_id=request.state.request_id)
     logger.info(f"Getting MLB odds for date {date}")
@@ -42,7 +36,6 @@ def get_mlb_odds(
         odds_data = espn_client.get_mlb_scoreboard_with_odds(date=date)
 
         if not odds_data:
-            logger.warning(f"No MLB odds data found for date {date}")
             return JSONResponse(
                 status_code=200,
                 content={
