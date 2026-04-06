@@ -121,7 +121,6 @@ class ESPNClient:
 
         if spread_value is not None:
             game_data["spread"] = spread_value
-            game_data["spreadDetails"] = spread_details
 
             if spread_value < 0:
                 game_data["favoredTeam"] = "home"
@@ -129,6 +128,18 @@ class ESPNClient:
                 game_data["favoredTeam"] = "away"
             else:
                 game_data["favoredTeam"] = "even"
+
+            # Build spreadDetails from the actual spread value and team abbreviations
+            # ESPN's "details" field often contains moneyline info for MLB, not the spread
+            favored = game_data["favoredTeam"]
+            if favored == "home" and game_data.get("teams", {}).get("home"):
+                abbr = game_data["teams"]["home"].get("abbreviation", "HOME")
+                game_data["spreadDetails"] = f"{abbr} {spread_value}"
+            elif favored == "away" and game_data.get("teams", {}).get("away"):
+                abbr = game_data["teams"]["away"].get("abbreviation", "AWAY")
+                game_data["spreadDetails"] = f"{abbr} {spread_value}"
+            else:
+                game_data["spreadDetails"] = spread_details
 
         game_data["overUnder"] = odds_data.get("overUnder")
 
