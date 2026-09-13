@@ -1,17 +1,37 @@
 from aws_lambda_powertools import Logger
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
+from zoneinfo import ZoneInfo
 import os
+
+EST = ZoneInfo("America/New_York")
 
 
 class NFLHelper:
     """
     A class to handle NFL-related operations and calculations in the FortunasBet application.
+
+    All week boundary math is evaluated in Eastern Time so that resolution is
+    independent of the server's local time zone.
     """
 
     def __init__(self, request_id: str):
         self.logger = Logger()
         self.logger.append_keys(request_id=request_id)
+
+    @staticmethod
+    def _et_midnight(day: date) -> datetime:
+        """
+        Build an Eastern-Time-aware datetime at 00:00:00 on the given calendar date.
+
+        The datetime is constructed from (year, month, day) wall-clock components
+        rather than by adding a timedelta to an existing aware datetime, so that
+        ZoneInfo resolves the correct UTC offset across DST transitions. Adding a
+        timedelta to an aware datetime preserves the original offset and would
+        drift by an hour once the arithmetic crosses a spring-forward or
+        fall-back boundary.
+        """
+        return datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=EST)
 
     def get_nfl_season_info(self) -> Dict:
         """
@@ -54,7 +74,7 @@ class NFLHelper:
             week: Week number (1-indexed)
 
         Returns:
-            tuple: (week_start_datetime, week_end_datetime)
+            tuple: (week_start_datetime, week_end_datetime), both Eastern-Time aware
 
         Raises:
             ValueError: If invalid season_type provided
@@ -63,26 +83,31 @@ class NFLHelper:
 
         if season_type == 1:  # Preseason
             season_data = season_info["preseason"]
-            start_date = datetime(
+            start_date = date(
                 year, season_data["start_month"], season_data["start_day"]
             )
         elif season_type == 2:  # Regular season
             season_data = season_info["regular_season"]
-            start_date = datetime(
+            start_date = date(
                 year, season_data["start_month"], season_data["start_day"]
             )
         elif season_type == 3:  # Playoffs
             season_data = season_info["playoffs"]
             # Playoffs are in the year AFTER the season year
-            start_date = datetime(
+            start_date = date(
                 year + 1, season_data["start_month"], season_data["start_day"]
             )
         else:
             raise ValueError(f"Invalid season_type: {season_type}")
 
-        # Calculate the start of the specific week (weeks are 1-indexed)
-        week_start = start_date + timedelta(weeks=(week - 1))
-        week_end = week_start + timedelta(days=6)  # Week runs Sunday to Saturday
+        # Calculate the start of the specific week (weeks are 1-indexed).
+        # Date arithmetic first, then build the ET wall-clock datetime, so DST
+        # transitions inside the offset resolve to the correct UTC offset.
+        week_start_date = start_date + timedelta(weeks=(week - 1))
+        week_end_date = week_start_date + timedelta(days=6)
+
+        week_start = self._et_midnight(week_start_date)
+        week_end = self._et_midnight(week_end_date)
 
         return week_start, week_end
 
@@ -97,10 +122,12 @@ class NFLHelper:
         Returns:
             List of dictionaries containing week information
         """
-        start_date = datetime.fromtimestamp(start_epoch)
-        end_date = datetime.fromtimestamp(end_epoch)
+        start_date = datetime.fromtimestamp(start_epoch, tz=EST)
+        end_date = datetime.fromtimestamp(end_epoch, tz=EST)
 
-        self.logger.info(f"Finding NFL weeks between {start_date} and {end_date}")
+        self.logger.info(
+            f"Finding NFL weeks between {start_date.isoformat()} and {end_date.isoformat()}"
+        )
 
         weeks_in_range = []
         season_info = self.get_nfl_season_info()
@@ -199,12 +226,12 @@ class NFLHelper:
 
     def get_current_nfl_week(self) -> Optional[Dict]:
         """
-        Get the current NFL week based on today's date.
+        Get the current NFL week based on the present moment in Eastern Time.
 
         Returns:
             Dictionary with current week info or None if not in season
         """
-        current_epoch = int(datetime.now().timestamp())
+        current_epoch = int(datetime.now(tz=EST).timestamp())
 
         # Look for current week in a small range around today
         start_epoch = current_epoch - (7 * 24 * 60 * 60)  # One week before

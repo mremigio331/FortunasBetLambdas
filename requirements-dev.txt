@@ -1,0 +1,6 @@
+# Test-only dependencies. Kept out of requirements.txt so they are not
+# bundled into the Lambda layer built by create_lambda_layer.sh.
+-r requirements.txt
+
+pytest==8.3.4
+hypothesis==6.122.3
