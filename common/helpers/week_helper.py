@@ -478,6 +478,31 @@ class WeekHelper:
         now = datetime.now(timezone.utc)
         season_year = self.get_nfl_season_year(now)
 
+        # Fast path: the plain scoreboard already resolves the current season
+        # and week and carries the full calendar, so a single lightweight call
+        # answers the common in-season case without fetching a full-year
+        # schedule (~850KB) for up to three candidate years.
+        try:
+            calendar = self._extract_schedule_calendar(espn_client.get_nfl_calendar())
+            found = self._find_containing_week(calendar, now)
+            if found is not None:
+                current_week_info = self._build_current_week(season_year, found)
+                self.logger.info(
+                    "Resolved current NFL week via fast calendar path: "
+                    f"{current_week_info['season_type_label']} "
+                    f"{current_week_info['week_label']}"
+                )
+                return current_week_info
+            self.logger.info(
+                "Fast calendar path did not contain the present moment; "
+                "falling back to full-schedule resolution"
+            )
+        except Exception as e:
+            self.logger.warning(
+                f"Fast calendar path failed ({e}); falling back to "
+                "full-schedule resolution"
+            )
+
         # Preferred Season_Year first, then its neighbours (Requirement 5.3).
         candidate_years = [season_year, season_year - 1, season_year + 1]
 

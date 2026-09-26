@@ -417,6 +417,49 @@ class ESPNClient:
             self.logger.error(f"Request failed: {e}")
             return {}
 
+    def get_nfl_calendar(self):
+        """
+        Fetch the lightweight NFL scoreboard used only for week/season
+        resolution.
+
+        The plain scoreboard already carries the resolved current ``season``
+        and ``week`` plus the full ``leagues[0].calendar`` of week boundaries,
+        so it answers "what NFL week is it right now" in a single ~18KB call.
+        This replaces fetching ``scoreboard?dates={year}`` (~850KB) for up to
+        three candidate years.
+
+        ``limit=1`` trims the events list (which we do not use here) to keep
+        the payload minimal; the calendar and season/week blocks are unaffected.
+
+        Returns:
+            dict: The raw scoreboard payload, or {} on failure.
+        """
+        self.metrics.add_dimension(
+            name=ENDPOINT, value="/sports/football/nfl/scoreboard"
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value="NFL")
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            url = (
+                "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
+            )
+            params = {"limit": 1}
+            self.logger.info(f"Fetching NFL calendar scoreboard from: {url}")
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return data
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Request failed: {e}")
+            return {}
+
     def get_slate(
         self,
         sport: str,
