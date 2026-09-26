@@ -121,8 +121,7 @@ def cmd_by_user(args, table):
     filtered = [
         i
         for i in items
-        if user_tag in i.get("SK", "")
-        and not i.get("SK", "").startswith("REMOVED#")
+        if user_tag in i.get("SK", "") and not i.get("SK", "").startswith("REMOVED#")
     ]
     filtered = _apply_enrichment(
         filtered, _table_name(args.stage), args.grade, args.espn

@@ -417,6 +417,131 @@ class ESPNClient:
             self.logger.error(f"Request failed: {e}")
             return {}
 
+    def get_slate(
+        self,
+        sport: str,
+        league: str,
+        week: int = None,
+        year: int = None,
+        season_type: int = 2,
+        date: str = None,
+    ):
+        """
+        Returns all games for a slate (NFL week or MLB date) WITHOUT odds.
+
+        This is the fast, bulk call used to render the games list before
+        odds are lazily loaded per-game. One HTTP request to the ESPN
+        scoreboard, normalised through ``_parse_event``.
+
+        Args:
+            sport: 'football' or 'baseball'.
+            league: 'nfl' or 'mlb'.
+            week/year/season_type: NFL slate selectors.
+            date: MLB slate selector in YYYYMMDD format.
+
+        Returns:
+            list[dict]: Normalised game_data dicts with null odds placeholders.
+        """
+        league_lower = (league or "").lower()
+
+        if league_lower == "mlb":
+            scoreboard = self.get_mlb_scoreboard(date)
+        else:
+            scoreboard = self.get_nfl_scoreboard(
+                week=week, year=year, season_type=season_type
+            )
+
+        events = (scoreboard or {}).get("events", [])
+        games = []
+        for event in events:
+            try:
+                games.append(self._parse_event(event))
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to parse slate event {event.get('id')}: {e}"
+                )
+                continue
+
+        self.logger.info(
+            f"Parsed {len(games)} games for {league_lower} slate "
+            f"(week={week}, year={year}, season_type={season_type}, date={date})"
+        )
+        return games
+
+    def get_game_odds(self, sport: str, league: str, game_id: str):
+        """
+        Returns odds for a single game, normalised through ``_parse_event`` +
+        ``_attach_odds``. Used to lazily load betting lines for one not-yet-
+        started game after the slate has rendered.
+
+        Args:
+            sport: 'football' or 'baseball'.
+            league: 'nfl' or 'mlb'.
+            game_id: The ESPN event id.
+
+        Returns:
+            dict: Odds fields for the game (spread, spreadDetails, favoredTeam,
+            overUnder, homeTeamOdds, awayTeamOdds) plus game_id, or an empty
+            dict if odds are unavailable.
+        """
+        league_lower = (league or "").lower()
+        sport_lower = (sport or "").lower()
+
+        self.metrics.add_dimension(
+            name=ENDPOINT,
+            value=f"/sports/{sport_lower}/{league_lower}/events/{game_id}/odds",
+        )
+        self.metrics.add_dimension(name=LEAGUE_DIMENSION, value=league_lower.upper())
+        self.metrics.add_metric(name=ESPN_API_CALL, unit=MetricUnit.Count, value=1)
+
+        try:
+            if league_lower == "mlb":
+                odds_response = self.get_mlb_game_odds(game_id)
+                odds_items = (odds_response or {}).get("items", [])
+                odds_item = odds_items[0] if odds_items else None
+            else:
+                url = (
+                    f"https://sports.core.api.espn.com/v2/sports/{sport_lower}"
+                    f"/leagues/{league_lower}/events/{game_id}"
+                    f"/competitions/{game_id}/odds"
+                )
+                params = {"lang": "en", "region": "us"}
+                self.logger.info(f"Fetching game odds from: {url}")
+                response = requests.get(url, params=params, timeout=10)
+                response.raise_for_status()
+                odds_response = response.json()
+                odds_items = (odds_response or {}).get("items", [])
+                odds_item = odds_items[0] if odds_items else None
+
+            game_odds = {
+                "game_id": game_id,
+                "spread": None,
+                "spreadDetails": None,
+                "favoredTeam": None,
+                "overUnder": None,
+                "homeTeamOdds": None,
+                "awayTeamOdds": None,
+            }
+
+            if odds_item:
+                # _attach_odds mutates in place; it reads teams for spreadDetails
+                # but tolerates their absence, so a bare dict is safe here.
+                self._attach_odds(game_odds, odds_item)
+            else:
+                self.logger.warning(
+                    f"No odds available for {league_lower} game {game_id}"
+                )
+
+            self.metrics.add_metric(name=ESPN_SUCCESS, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            return game_odds
+
+        except requests.RequestException as e:
+            self.metrics.add_metric(name=ESPN_EXCEPTION, unit=MetricUnit.Count, value=1)
+            self.metrics.flush_metrics()
+            self.logger.error(f"Failed to fetch odds for game {game_id}: {e}")
+            return {}
+
     def get_event(self, sport: str, league: str, event_id: str):
         """
         Returns event data for a specific event by ID.

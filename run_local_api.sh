@@ -9,10 +9,10 @@ export COGNITO_CLIENT_ID=$(aws cognito-idp list-user-pools --max-results 60 --re
     --output text
 )
 export COGNITO_REGION="us-west-2"
-export COGNITO_API_REDIRECT_URI="http://localhost:5000/"
+export COGNITO_API_REDIRECT_URI="http://localhost:5050/"
 export COGNITO_DOMAIN="https://fortunasbet-testing.auth.us-west-2.amazoncognito.com"
 export API_URL="https://api.testing.fortunasbet.com"
 export TABLE_NAME="FortunasBet-UserTable-Testing"
 
 LOG_FILE="local_api.log"
-uvicorn app:app --reload --port 5000 2>&1 | tee "$LOG_FILE"
+uvicorn app:app --reload --port 5050 2>&1 | tee "$LOG_FILE"
