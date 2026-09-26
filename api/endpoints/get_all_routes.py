@@ -9,6 +9,8 @@ from api.endpoints.room import (
     get_valid_leagues,
     get_room_leaderboard,
     get_room_bets_all,
+    get_room_standings_members,
+    get_room_user_bets,
 )
 from api.endpoints.membership import (
     get_all_membership_request,
@@ -81,6 +83,8 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     app.include_router(get_room.router, prefix="/room", tags=[ROOM])
     app.include_router(get_room_leaderboard.router, prefix="/room", tags=[ROOM])
     app.include_router(get_room_bets_all.router, prefix="/room", tags=[ROOM])
+    app.include_router(get_room_standings_members.router, prefix="/room", tags=[ROOM])
+    app.include_router(get_room_user_bets.router, prefix="/room", tags=[ROOM])
 
     app.include_router(
         get_all_membership_request.router, prefix="/membership", tags=[MEMBERSHIP]

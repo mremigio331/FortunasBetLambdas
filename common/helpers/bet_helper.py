@@ -443,6 +443,60 @@ class BetHelper:
             )
             raise
 
+    def get_user_bets_for_room_for_display(
+        self, room_id: str, user_id: str
+    ) -> List[dict]:
+        """
+        Get a user's bets for a room for read/display (standings, history).
+
+        Optimised read path: grades any ungraded finished bets once (which
+        persists to DynamoDB via check_and_grade_bet), but skips the always-on
+        _enhance_bet_with_game_data ESPN call. Display uses the stored
+        odds_snapshot and the persisted grade result, so finished bets render
+        correctly without a per-bet live ESPN round-trip on every read.
+
+        This is what powers the per-user standings fetch; it avoids the ESPN
+        fan-out that get_all_bets_for_room incurs.
+        """
+        try:
+            response = self.table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": f"ROOM#{room_id}",
+                    ":sk_prefix": "POINT#",
+                },
+            )
+            items = response.get("Items", [])
+
+            serializable_items = [
+                self._convert_decimals_to_floats(item) for item in items
+            ]
+
+            user_id_str = f"USER#{user_id}"
+            filtered_items = [
+                item
+                for item in serializable_items
+                if user_id_str in item.get("SK", "")
+                and not item.get("SK", "").startswith("REMOVED#")
+            ]
+
+            result_items = []
+            for item in filtered_items:
+                # Grade once if needed (persists); otherwise use the stored bet.
+                graded_bet = self.check_and_grade_bet(item)
+                result_items.append(graded_bet if graded_bet else item)
+
+            self.logger.info(
+                f"Retrieved {len(result_items)} display bets for user {user_id} "
+                f"in room {room_id} (no live enhancement)"
+            )
+            return result_items
+        except ClientError as e:
+            self.logger.error(
+                f"Error fetching display bets for user {user_id} in room {room_id}: {e}"
+            )
+            raise
+
     def get_removed_bets_for_user(self, room_id: str, user_id: str) -> List[dict]:
         """
         Get all removed bets for a specific user in a room (history view).
