@@ -1,5 +1,5 @@
 from api.endpoints.fortunas_bet import home
-from api.endpoints.home import get_home_data
+from api.endpoints.home import get_home_data, get_home_rooms, get_room_current_bets
 from api.endpoints.user import get_requestors_profile, update_user_profile
 from api.endpoints.room import (
     create_room,
@@ -66,6 +66,8 @@ def get_all_routes(app: FastAPI) -> FastAPI:
     """
     app.include_router(home.router, prefix="/fortunasbet", tags=[HOME])
     app.include_router(get_home_data.router, prefix="/home", tags=[HOME])
+    app.include_router(get_home_rooms.router, prefix="/home", tags=[HOME])
+    app.include_router(get_room_current_bets.router, prefix="/home", tags=[HOME])
 
     app.include_router(
         get_requestors_profile.router, prefix="/user", tags=[USER_PROFILE]
