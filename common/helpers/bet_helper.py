@@ -2,7 +2,7 @@ from aws_lambda_powertools import Logger
 import boto3
 from botocore.exceptions import ClientError
 from common.models.bet import BetModel
-from datetime import datetime
+from datetime import datetime, timezone
 from exceptions.bet_exceptions import (
     DuplicateBetException,
     BetNotFound,
@@ -152,13 +152,8 @@ class BetHelper:
             # Convert Decimal values back to float for JSON serialization
             serializable_item = self._convert_decimals_to_floats(item)
 
-            # Check and grade the bet if needed
-            graded_bet = self.check_and_grade_bet(serializable_item)
-            if graded_bet:
-                serializable_item = graded_bet
-
-            # Enhance with current ESPN game data
-            enhanced_item = self._enhance_bet_with_game_data(serializable_item)
+            # Grade (if needed) and enhance with the minimum ESPN work.
+            enhanced_item = self._grade_and_enhance_bet(serializable_item)
 
             self.logger.info(
                 f"Retrieved {points_wagered}-point bet for user {user_id} in room {room_id} for event {event_datetime}"
@@ -234,13 +229,7 @@ class BetHelper:
                     # If derivation fails, skip that item
                     pass
             for item in filtered_items:
-                graded_bet = self.check_and_grade_bet(item)
-                if graded_bet:
-                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
-                    graded_items.append(enhanced_bet)
-                else:
-                    enhanced_bet = self._enhance_bet_with_game_data(item)
-                    graded_items.append(enhanced_bet)
+                graded_items.append(self._grade_and_enhance_bet(item))
 
             self.logger.info(
                 f"Retrieved {len(graded_items)} bets for room {room_id} in week {week} season type {season_type}"
@@ -283,15 +272,9 @@ class BetHelper:
                 if not item.get("SK", "").startswith("REMOVED#")
             ]
 
-            graded_items = []
-            for item in serializable_items:
-                graded_bet = self.check_and_grade_bet(item)
-                if graded_bet:
-                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
-                    graded_items.append(enhanced_bet)
-                else:
-                    enhanced_bet = self._enhance_bet_with_game_data(item)
-                    graded_items.append(enhanced_bet)
+            graded_items = [
+                self._grade_and_enhance_bet(item) for item in serializable_items
+            ]
 
             self.logger.info(
                 f"Retrieved {len(graded_items)} bets for room {room_id} "
@@ -331,15 +314,9 @@ class BetHelper:
             ]
 
             # Check and grade each bet if needed
-            graded_items = []
-            for item in serializable_items:
-                graded_bet = self.check_and_grade_bet(item)
-                if graded_bet:
-                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
-                    graded_items.append(enhanced_bet)
-                else:
-                    enhanced_bet = self._enhance_bet_with_game_data(item)
-                    graded_items.append(enhanced_bet)
+            graded_items = [
+                self._grade_and_enhance_bet(item) for item in serializable_items
+            ]
 
             self.logger.info(f"Retrieved {len(graded_items)} bets for room {room_id}")
             return graded_items
@@ -374,15 +351,9 @@ class BetHelper:
             ]
 
             # Check and grade each bet if needed
-            graded_items = []
-            for item in serializable_items:
-                graded_bet = self.check_and_grade_bet(item)
-                if graded_bet:
-                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
-                    graded_items.append(enhanced_bet)
-                else:
-                    enhanced_bet = self._enhance_bet_with_game_data(item)
-                    graded_items.append(enhanced_bet)
+            graded_items = [
+                self._grade_and_enhance_bet(item) for item in serializable_items
+            ]
 
             self.logger.info(
                 f"Retrieved {len(graded_items)} {points_wagered}-point bets for room {room_id}"
@@ -423,15 +394,9 @@ class BetHelper:
             ]
 
             # Check and grade each bet if needed
-            graded_items = []
-            for item in filtered_items:
-                graded_bet = self.check_and_grade_bet(item)
-                if graded_bet:
-                    enhanced_bet = self._enhance_bet_with_game_data(graded_bet)
-                    graded_items.append(enhanced_bet)
-                else:
-                    enhanced_bet = self._enhance_bet_with_game_data(item)
-                    graded_items.append(enhanced_bet)
+            graded_items = [
+                self._grade_and_enhance_bet(item) for item in filtered_items
+            ]
 
             self.logger.info(
                 f"Retrieved {len(graded_items)} bets for user {user_id} in room {room_id}"
@@ -741,7 +706,9 @@ class BetHelper:
                     f"(week boundary: {week_start_epoch} to {week_end_epoch})"
                 )
                 raise DuplicateBetException(
-                    f"You already have a {points_wagered}-point bet placed this week"
+                    room_id=room_id,
+                    user_id=user_id,
+                    points_wagered=points_wagered,
                 )
 
             self.logger.info(
@@ -757,12 +724,18 @@ class BetHelper:
             # In case of error, allow the bet to proceed
             return True
 
-    def _enhance_bet_with_game_data(self, bet_data: dict) -> dict:
+    def _enhance_bet_with_game_data(
+        self, bet_data: dict, game_data: dict = None
+    ) -> dict:
         """
-        Enhance bet data with current ESPN game data (scores, status).
+        Enhance bet data with ESPN game data (scores, status).
 
         Args:
             bet_data: The bet dictionary from DynamoDB
+            game_data: Pre-fetched ESPN event data. When provided, it is
+                reused instead of issuing another get_event call (avoids the
+                duplicate fetch when grading already fetched the game). When
+                omitted, the game is fetched here as before.
 
         Returns:
             Enhanced bet data with game_status field containing structured team data
@@ -778,13 +751,13 @@ class BetHelper:
                 )
                 return bet_data
 
-            # Get current game data from ESPN
-            request_id = getattr(self.logger, "_keys", {}).get("request_id")
-            espn_client = ESPNClient(request_id=request_id)
-
-            game_data = espn_client.get_event(
-                sport=sport, league=league, event_id=game_id
-            )
+            # Reuse pre-fetched game data when available; only hit ESPN if not.
+            if game_data is None:
+                request_id = getattr(self.logger, "_keys", {}).get("request_id")
+                espn_client = ESPNClient(request_id=request_id)
+                game_data = espn_client.get_event(
+                    sport=sport, league=league, event_id=game_id
+                )
 
             if game_data:
                 # Extract team information and scores
@@ -835,7 +808,9 @@ class BetHelper:
 
         return bet_data
 
-    def check_and_grade_bet(self, bet_data: dict) -> Optional[dict]:
+    def check_and_grade_bet(
+        self, bet_data: dict, game_data: dict = None
+    ) -> Optional[dict]:
         """
         Check if a bet's total_points_earned is None and grade it using ESPN API.
 
@@ -861,23 +836,41 @@ class BetHelper:
             )
             return None
 
+        # Fast exit: a game that has not started cannot be final, so there is
+        # nothing to grade yet — skip the ESPN call entirely. (Only applies
+        # when we are fetching here; a caller-provided game_data means the
+        # caller already decided a fetch was warranted.)
+        if game_data is None:
+            event_dt = bet_data.get("event_datetime")
+            if event_dt is not None:
+                try:
+                    now_epoch = int(datetime.now(timezone.utc).timestamp())
+                    if now_epoch < int(event_dt):
+                        self.logger.info(
+                            "Game has not started yet - skipping grading fetch"
+                        )
+                        return None
+                except (TypeError, ValueError):
+                    pass
+
         self.logger.info(
             f"Bet not yet graded (total_points_earned is {total_points_earned}) - proceeding with grading"
         )
 
         try:
-            # Get current game status from ESPN
-            espn_client = ESPNClient(request_id=self.request_id)
-
+            # Reuse pre-fetched game data when provided (avoids a duplicate
+            # get_event when the caller already fetched the game); otherwise
+            # fetch it here as before.
             sport = bet_data["sport"]
             league = bet_data["league"]
-            self.logger.info(
-                f"Fetching game data from ESPN for {sport}/{league} game_id: {game_id}"
-            )
-
-            game_data = espn_client.get_event(
-                sport=sport, league=league, event_id=game_id
-            )
+            if game_data is None:
+                espn_client = ESPNClient(request_id=self.request_id)
+                self.logger.info(
+                    f"Fetching game data from ESPN for {sport}/{league} game_id: {game_id}"
+                )
+                game_data = espn_client.get_event(
+                    sport=sport, league=league, event_id=game_id
+                )
 
             if not game_data:
                 self.logger.warning(
@@ -973,6 +966,57 @@ class BetHelper:
             return None
 
         return None
+
+    def _grade_and_enhance_bet(self, bet_data: dict) -> dict:
+        """
+        Grade (if needed) and enhance a single bet with the minimum ESPN work.
+
+        Fast exits that avoid any ESPN call:
+          - Already graded (total_points_earned is not None): the result is
+            settled and the stored game status is correct, so return the bet
+            as-is with no fetch and no enhancement.
+          - Not started yet (event_datetime in the future): the game cannot be
+            final and has no live scores worth showing, so skip the fetch.
+
+        Otherwise (ungraded and started/in-progress) the game is fetched exactly
+        once and that same payload is used for both grading and enhancement,
+        removing the previous duplicate get_event call.
+
+        Replaces the per-bet
+            graded = check_and_grade_bet(item)
+            enhanced = _enhance_bet_with_game_data(graded or item)
+        loop that was copy-pasted across the room/user bet fetchers and made two
+        ESPN calls per ungraded bet plus one per already-graded bet.
+        """
+        # Fast exit 1: already graded -> no ESPN work.
+        if bet_data.get("total_points_earned") is not None:
+            return bet_data
+
+        # Fast exit 2: game hasn't started -> can't be final, nothing live yet.
+        event_dt = bet_data.get("event_datetime")
+        if event_dt is not None:
+            try:
+                now_epoch = int(datetime.now(timezone.utc).timestamp())
+                if now_epoch < int(event_dt):
+                    return bet_data
+            except (TypeError, ValueError):
+                pass  # fall through to normal path if event_datetime is odd
+
+        game_id = bet_data.get("game_id")
+        sport = bet_data.get("sport")
+        league = bet_data.get("league")
+        if not all([game_id, sport, league]):
+            return bet_data
+
+        # Single ESPN fetch, reused for grading and enhancement.
+        espn_client = ESPNClient(request_id=self.request_id)
+        game_data = espn_client.get_event(sport=sport, league=league, event_id=game_id)
+        if not game_data:
+            return bet_data
+
+        graded_bet = self.check_and_grade_bet(bet_data, game_data=game_data)
+        target = graded_bet if graded_bet else bet_data
+        return self._enhance_bet_with_game_data(target, game_data=game_data)
 
     def _grade_spread_bet(self, bet_data: dict, game_data: dict) -> Optional[float]:
         """
