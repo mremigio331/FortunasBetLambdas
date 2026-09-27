@@ -138,6 +138,28 @@ def create_bet(request: Request, bet_request: CreateBetRequest):
             status_code=401, content={"error": "User authentication required"}
         )
 
+    # Fail fast with a clear 400 if the odds_snapshot is missing the line the
+    # bet type needs. Without this, a null-odds snapshot slips through to
+    # validate_odds_snapshot / grading and can surface as an opaque 500.
+    odds_snapshot = bet_request.odds_snapshot or {}
+    bet_type = bet_request.game_bet.bet_type
+    if bet_type == "over_under":
+        total = odds_snapshot.get("overUnder")
+        if total is None and bet_request.game_bet.total_value is None:
+            logger.warning(
+                f"Over/under bet for game {bet_request.game_id} is missing a "
+                "total line in odds_snapshot"
+            )
+            raise InvalidBetTypeException("over_under", "total_value")
+    elif bet_type == "spread":
+        spread = odds_snapshot.get("spread")
+        if spread is None and bet_request.game_bet.spread_value is None:
+            logger.warning(
+                f"Spread bet for game {bet_request.game_id} is missing a spread "
+                "line in odds_snapshot"
+            )
+            raise InvalidBetTypeException("spread", "spread_value")
+
     # Check if user is a member of the room
     membership_helper = MembershipHelper(request_id=request.state.request_id)
     room_membership = membership_helper.get_membership(

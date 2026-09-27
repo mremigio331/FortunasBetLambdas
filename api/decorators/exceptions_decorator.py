@@ -40,6 +40,10 @@ from exceptions.bet_exceptions import (
 from exceptions.bet_exceptions import OddsSnapshotMismatch
 from fastapi.responses import JSONResponse
 from botocore.exceptions import ClientError
+from aws_lambda_powertools import Logger
+from common.constants.services import API_SERVICE
+
+logger = Logger(service=API_SERVICE)
 
 
 def exceptions_decorator(func):
@@ -174,6 +178,17 @@ def exceptions_decorator(func):
                 status_code=500,
             )
         except ClientError as exc:
+            return JSONResponse(
+                content={"message": str(exc) or "Internal server error."},
+                status_code=500,
+            )
+
+        # Catch-all: any exception not explicitly handled above would
+        # otherwise propagate to FastAPI and surface as an opaque 500 with
+        # an empty body. Return a JSON 500 with the error message and log
+        # it so unexpected failures are debuggable instead of silent.
+        except Exception as exc:
+            logger.exception(f"Unhandled exception in endpoint: {exc}")
             return JSONResponse(
                 content={"message": str(exc) or "Internal server error."},
                 status_code=500,
