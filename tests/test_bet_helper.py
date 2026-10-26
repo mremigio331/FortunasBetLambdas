@@ -279,6 +279,85 @@ class TestValidateOddsSnapshot:
         # No Draft Kings -> uses the only provider present.
         assert h.validate_odds_snapshot(snap, self._event(provider="FanDuel")) is True
 
+    # --- bet-type scoped validation -------------------------------------
+
+    def test_spread_bet_ignores_moneyline_and_total_drift(self):
+        """Regression for Tito's bet: a spread bet should pass when the spread
+        and spread odds match, even if money line and over/under have moved."""
+        h = make_helper()
+        snap = {
+            "spread": 7,
+            "overUnder": 43.5,  # stale (live is 44.5) - irrelevant to a spread bet
+            "homeTeamOdds": {"moneyLine": 285, "spreadOdds": -108},  # ML stale
+            "awayTeamOdds": {"moneyLine": -360, "spreadOdds": -112},  # ML stale
+        }
+        event = {
+            "pickcenter": [
+                {
+                    "provider": {"name": "Draft Kings"},
+                    "spread": 7.0,
+                    "overUnder": 44.5,
+                    "homeTeamOdds": {"moneyLine": 275, "spreadOdds": -108.0},
+                    "awayTeamOdds": {"moneyLine": -345, "spreadOdds": -112.0},
+                }
+            ]
+        }
+        assert h.validate_odds_snapshot(snap, event, bet_type="spread") is True
+
+    def test_spread_bet_fails_when_spread_moves(self):
+        h = make_helper()
+        snap = {
+            "spread": -3.0,
+            "homeTeamOdds": {"moneyLine": -150, "spreadOdds": -110},
+            "awayTeamOdds": {"moneyLine": 130, "spreadOdds": -110},
+        }
+        # Live spread is -7.0 in self._event default.
+        assert (
+            h.validate_odds_snapshot(snap, self._event(spread=-7.0), bet_type="spread")
+            is False
+        )
+
+    def test_spread_bet_fails_when_spread_odds_move(self):
+        h = make_helper()
+        snap = {
+            "spread": -3.0,
+            "homeTeamOdds": {"moneyLine": -150, "spreadOdds": -120},  # drifted
+            "awayTeamOdds": {"moneyLine": 130, "spreadOdds": -110},
+        }
+        assert h.validate_odds_snapshot(snap, self._event(), bet_type="spread") is False
+
+    def test_over_under_bet_ignores_spread_and_moneyline_drift(self):
+        h = make_helper()
+        snap = {
+            "spread": -99.0,  # irrelevant to an over/under bet
+            "overUnder": 45.5,
+            "homeTeamOdds": {"moneyLine": 999, "spreadOdds": 999},  # irrelevant
+            "awayTeamOdds": {"moneyLine": 999, "spreadOdds": 999},  # irrelevant
+        }
+        assert (
+            h.validate_odds_snapshot(snap, self._event(), bet_type="over_under") is True
+        )
+
+    def test_over_under_bet_fails_when_total_moves(self):
+        h = make_helper()
+        snap = {"overUnder": 50.5}
+        # Live total is 45.5 in self._event default.
+        assert (
+            h.validate_odds_snapshot(snap, self._event(), bet_type="over_under")
+            is False
+        )
+
+    def test_unknown_bet_type_falls_back_to_full_validation(self):
+        h = make_helper()
+        # Money line drift should fail under full (None/unknown) validation.
+        snap = {
+            "spread": -3.0,
+            "overUnder": 45.5,
+            "homeTeamOdds": {"moneyLine": -999, "spreadOdds": -110},
+            "awayTeamOdds": {"moneyLine": 130, "spreadOdds": -110},
+        }
+        assert h.validate_odds_snapshot(snap, self._event()) is False
+
 
 # ---------------------------------------------------------------------------
 # Query/filter helpers (removed exclusion, user filtering)

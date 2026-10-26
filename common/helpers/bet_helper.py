@@ -1347,13 +1347,28 @@ class BetHelper:
             )
             raise
 
-    def validate_odds_snapshot(self, odds_snapshot: dict, event_data: dict) -> bool:
+    def validate_odds_snapshot(
+        self, odds_snapshot: dict, event_data: dict, bet_type: str = None
+    ) -> bool:
         """
-        Validate that the home/away team odds in odds_snapshot match those in event_data.
-        Returns True if they match, False otherwise. Adds detailed logging for debugging.
+        Validate that the odds in odds_snapshot still match the live event_data.
+
+        Validation is scoped to the fields the bet actually depends on, so a
+        bet is only rejected when a line it relies on has moved:
+          - "spread":     spread + home/away spreadOdds
+          - "over_under": overUnder (total) only
+          - None/unknown: full validation (money line + spread odds + spread +
+                          overUnder) as a safe fallback.
+
+        Fortunas only offers spread and over/under bets, so money line never
+        affects a wager and is intentionally excluded for those bet types. This
+        prevents false OddsSnapshotMismatch rejections caused by drift in fields
+        the bet does not use (e.g. a spread bet rejected over money-line or
+        total movement). Returns True if the relevant fields match.
         """
         self.logger.info(
-            f"Validating odds snapshot: odds_snapshot={odds_snapshot}, event_data keys={list(event_data.keys())}"
+            f"Validating odds snapshot (bet_type={bet_type}): "
+            f"odds_snapshot={odds_snapshot}, event_data keys={list(event_data.keys())}"
         )
         home_odds_req = odds_snapshot.get("homeTeamOdds", {})
         away_odds_req = odds_snapshot.get("awayTeamOdds", {})
@@ -1391,26 +1406,14 @@ class BetHelper:
         spread_req = odds_snapshot.get("spread")
         over_under_req = odds_snapshot.get("overUnder")
 
-        self.logger.info(
-            f"Comparing home odds: request={home_odds_req}, event={home_odds_event}"
-        )
-        self.logger.info(
-            f"Comparing away odds: request={away_odds_req}, event={away_odds_event}"
-        )
-        self.logger.info(
-            f"Comparing spread: request={spread_req}, event={spread_event}"
-        )
-        self.logger.info(
-            f"Comparing overUnder: request={over_under_req}, event={over_under_event}"
-        )
-
         # Helper function to compare odds values, treating None as a wildcard
         def odds_match(req_value, event_value):
             if req_value is None:
                 return True  # None in request matches any value from provider
             return req_value == event_value
 
-        # Compare money line and spread odds with flexibility for None values
+        # Compute every field match up front (cheap); which ones are *required*
+        # depends on bet_type below.
         home_money_match = odds_match(
             home_odds_req.get("moneyLine"), home_odds_event.get("moneyLine")
         )
@@ -1423,21 +1426,37 @@ class BetHelper:
         away_spread_match = odds_match(
             away_odds_req.get("spreadOdds"), away_odds_event.get("spreadOdds")
         )
-
-        # Core betting values must match exactly
         spread_match = spread_req == spread_event
         over_under_match = over_under_req == over_under_event
 
-        match = (
-            home_money_match
-            and home_spread_match
-            and away_money_match
-            and away_spread_match
-            and spread_match
-            and over_under_match
-        )
+        normalized_bet_type = (bet_type or "").lower()
+        if normalized_bet_type == "spread":
+            required = {
+                "spread": spread_match,
+                "home spread odds": home_spread_match,
+                "away spread odds": away_spread_match,
+            }
+        elif normalized_bet_type == "over_under":
+            required = {
+                "over/under": over_under_match,
+            }
+        else:
+            # Unknown/None bet type -> validate everything (previous behavior).
+            required = {
+                "home money line": home_money_match,
+                "home spread odds": home_spread_match,
+                "away money line": away_money_match,
+                "away spread odds": away_spread_match,
+                "spread": spread_match,
+                "over/under": over_under_match,
+            }
 
-        self.logger.info(f"Detailed odds validation:")
+        match = all(required.values())
+
+        self.logger.info(
+            f"Detailed odds validation (bet_type={bet_type}, "
+            f"checking: {sorted(required.keys())}):"
+        )
         self.logger.info(
             f"  Home money line: {home_odds_req.get('moneyLine')} vs {home_odds_event.get('moneyLine')} = {home_money_match}"
         )

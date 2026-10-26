@@ -237,7 +237,9 @@ def update_bet(request: Request, bet_request: UpdateBetRequest):
         )
 
     # Validate odds snapshot
-    if not bet_helper.validate_odds_snapshot(bet_request.odds_snapshot, event_data):
+    if not bet_helper.validate_odds_snapshot(
+        bet_request.odds_snapshot, event_data, bet_request.game_bet.bet_type
+    ):
         raise OddsSnapshotMismatch(
             "Home/Away team odds do not match between request and event data."
         )
