@@ -92,6 +92,20 @@ class ESPNClient:
             "indoor": venue.get("indoor", False),
         }
 
+        # ESPN only includes an AccuWeather forecast on upcoming games inside
+        # the forecast window (~7 days); completed games and further-out
+        # weeks have no weather key, and some events return an empty dict.
+        weather = event.get("weather") or {}
+        weather_info = None
+        if weather.get("displayValue") or weather.get("temperature") is not None:
+            weather_info = {
+                "displayValue": weather.get("displayValue", ""),
+                "temperature": weather.get("temperature"),
+                "highTemperature": weather.get("highTemperature"),
+                "conditionId": weather.get("conditionId"),
+                "link": (weather.get("link") or {}).get("href"),
+            }
+
         return {
             "matchup": event["name"],
             "date": event["date"],
@@ -99,6 +113,7 @@ class ESPNClient:
             "teams": {"home": home_team, "away": away_team},
             "status": game_status,
             "venue": venue_info,
+            "weather": weather_info,
             "spread": None,
             "spreadDetails": None,
             "favoredTeam": None,

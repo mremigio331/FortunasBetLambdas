@@ -96,6 +96,13 @@ def _nfl_scoreboard_fixture():
                         "venue": {"fullName": "Hard Rock Stadium", "address": {}},
                     }
                 ],
+                "weather": {
+                    "displayValue": "Rain",
+                    "temperature": 66,
+                    "highTemperature": 66,
+                    "conditionId": "18",
+                    "link": {"href": "http://www.accuweather.com/forecast"},
+                },
             },
         ]
     }
@@ -128,6 +135,38 @@ def test_get_slate_returns_all_games_without_odds():
     assert final["status"]["completed"] is True
     assert final["teams"]["home"]["score"] == "14"
     assert final["teams"]["away"]["score"] == "35"
+
+
+def test_get_slate_includes_weather_for_upcoming_games():
+    """Weather is passed through when ESPN provides it, else None."""
+    client = ESPNClient(request_id="test")
+    with patch.object(
+        client, "get_nfl_scoreboard", return_value=_nfl_scoreboard_fixture()
+    ):
+        games = client.get_slate(sport="football", league="nfl", week=4, year=2025)
+
+    upcoming = next(g for g in games if g["game_id"] == "401872953")
+    assert upcoming["weather"] == {
+        "displayValue": "Rain",
+        "temperature": 66,
+        "highTemperature": 66,
+        "conditionId": "18",
+        "link": "http://www.accuweather.com/forecast",
+    }
+
+    final = next(g for g in games if g["game_id"] == "401872948")
+    assert final["weather"] is None
+
+
+def test_get_slate_treats_empty_weather_as_none():
+    """ESPN sometimes returns an empty weather object for upcoming games."""
+    client = ESPNClient(request_id="test")
+    fixture = _nfl_scoreboard_fixture()
+    fixture["events"][1]["weather"] = {}
+    with patch.object(client, "get_nfl_scoreboard", return_value=fixture):
+        games = client.get_slate(sport="football", league="nfl", week=4, year=2025)
+
+    assert all(g["weather"] is None for g in games)
 
 
 def test_get_slate_uses_mlb_scoreboard_for_mlb():

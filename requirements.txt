@@ -9,3 +9,6 @@ uvicorn
 fpdf
 pytz
 reportlab
+# reportlab dependency; 12.3.0+ dropped manylinux2014 wheels, which the
+# Amazon Linux 2 (glibc 2.26) python3.11 Lambda image/runtime needs
+pillow<12.3
