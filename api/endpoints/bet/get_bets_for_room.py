@@ -9,6 +9,7 @@ from decimal import Decimal
 from api.decorators.exceptions_decorator import exceptions_decorator
 from api.decorators.jwt_decorator import jwt_required
 from common.helpers.bet_helper import BetHelper
+from common.helpers.bet_privacy import redact_hidden_bet
 from common.helpers.user_profile_helper import UserProfileHelper
 from common.models.bet import BetModel
 from common.constants.services import API_SERVICE
@@ -116,11 +117,12 @@ def get_bets_for_room(
                     logger.warning(
                         f"Could not retrieve event data for game {bet.game_id}"
                     )
-                    # If we can't get game data, assume game hasn't started and hide details
-                    bet.game_bet = None
-                    bet.total_points_earned = None
-                    bet.odds_snapshot = {}
-                    processed_bets.append(bet.dict())
+                    # If we can't get game data, assume game hasn't started and
+                    # hide details. redact_hidden_bet preserves user_id,
+                    # points_wagered, event_datetime (game start) and
+                    # submitted_at (bet placement time) so non-placers still see
+                    # when the bet was placed and when the game starts.
+                    processed_bets.append(redact_hidden_bet(bet.dict()))
                     continue
 
                 # Check game status
@@ -138,12 +140,11 @@ def get_bets_for_room(
                     # Game has started, return full bet details
                     processed_bets.append(bet.dict())
                 else:
-                    # Game hasn't started, return partial details only
-                    bet.game_bet = None
-                    bet.total_points_earned = None
-                    bet.game_id = None
-                    bet.odds_snapshot = {}
-                    processed_bets.append(bet.dict())
+                    # Game hasn't started, return partial details only.
+                    # redact_hidden_bet keeps event_datetime (game start) and
+                    # submitted_at (bet placement time) so other users still see
+                    # both times before the game starts.
+                    processed_bets.append(redact_hidden_bet(bet.dict()))
 
             except Exception as e:
                 logger.warning(f"Error processing bet item: {e}")
